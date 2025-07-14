@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Greg's Feed</title>
+    <meta charset='UTF-8'>
+    <link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
+    <link rel="manifest" href="favicon/site.webmanifest">
+    <style>
+        :root {
+            --bg-main: #f2f2f2;
+            --bg-modal: #f2f2f2;
+            --color-text-main: #000000;
+            --color-text-popup: #000000;
+            --color-meta: #555;
+            --color-accent: #0000FF;
+            --color-border: #ccc;
+            --color-hover: #f0f8ff;
+        }
+
+        body.theme-midnight {
+            --bg-main: #191D34;
+            --bg-modal: #191D34;
+            --color-text-main: #E9E9EC;
+            --color-text-popup: #E9E9EC;
+            --color-meta: #89B6C5;
+            --color-accent: #D97B90;
+            --color-border: #4E5470;
+            --color-hover: #fccad5;
+        }
+
+        body.theme-earth {
+            --bg-main: #1D1D1D;
+            --bg-modal: #1D1D1D;
+            --color-text-main: #A1986F;
+            --color-text-popup: #A1986F;
+            --color-meta: #506D4F;
+            --color-accent: #7E5237;
+            --color-border: #3F372A;
+            --color-hover: #c9a087;
+        }
+
+        body.theme-post-it {
+            --bg-main: #FBF1C7;
+            --bg-modal: #FBF1C7;
+            --color-text-main: #3C3836;
+            --color-text-popup: #3C3836;
+            --color-meta: #096778;
+            --color-accent: #AB2726;
+            --color-border: #EBDBB2;
+            --color-hover: #e66d6c;
+        }
+
+        html {
+            overflow-y: scroll;
+        }
+
+        body {
+            font-family: "Times New Roman", Times, serif;
+            font-size: 16px;
+            line-height: 1.6;
+            background-color: var(--bg-main);
+            color: var(--color-text-main);
+            margin: 0;
+            padding: 0;
+        }
+
+        pre {
+            font-size: 4px;
+            font-family: "Times New Roman", Times, serif;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .header-controls {
+            text-align: left;
+            margin-top: 5px;
+            margin-bottom: 20px;
+        }
+        
+        .header-main-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .theme-switcher {
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .theme-btn,
+        .action-btn {
+            font-size: 12px;
+            margin: 0;
+        }
+
+        #search-bar {
+            width: 100%;
+            font-size: 12px;
+            padding: 8px 12px;
+            border: 1px solid var(--color-border);
+            box-sizing: border-box;
+            background-color: var(--bg-main);
+            color: var(--color-text-main);
+        }
+
+        article {
+            border-bottom: 1px solid var(--color-border);
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            margin: 0;
+        }
+
+        h2 a {
+            text-decoration: none;
+            color: var(--color-accent);
+        }
+
+        .meta {
+            color: var(--color-meta);
+        }
+
+        .action-btn {
+            background: none;
+            border: 1px solid var(--color-accent);
+            color: var(--color-accent);
+            padding: 5px 10px;
+            border-radius: 0;
+            cursor: pointer;
+            font-family: "Times New Roman", Times, serif;
+            font-size: 12px;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .article-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .action-btn:hover {
+            background-color: var(--color-hover);
+        }
+
+        .loading-message {
+            text-align: center;
+            padding: 40px;
+            color: var(--color-meta);
+            font-size: 18px;
+        }
+
+        .video-container {
+            position: relative;
+            padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+            height: 0;
+            overflow: hidden;
+            max-width: 100%;
+            background: #000;
+            margin-bottom: 10px;
+        }
+        .video-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+        }
+
+        .modal-content {
+            display: none;
+            position: fixed;
+            z-index: 101;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 80vw;
+            height: 80vh;
+            background-color: var(--bg-modal);
+            box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-content iframe {
+            flex-grow: 1;
+            border: 1px solid var(--color-accent);
+        }
+
+        .modal-footer {
+            padding-top: 10px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: baseline;
+            gap: 15px;
+        }
+
+        .modal-footer .font-size-control {
+            display: flex;
+            align-items: baseline;
+            gap: 5px;
+        }
+
+        .modal-footer .font-size-control label {
+            color: var(--color-text-main);
+            font-size: 14px;
+        }
+
+        .modal-footer input[type=number] {
+            width: 40px;
+            text-align: center;
+            background: none;
+            color: var(--color-accent);
+            border: none;
+            border-bottom: 1px solid var(--color-border);
+            padding: 0;
+            font-family: "Times New Roman", Times, serif;
+            font-size: 16px;
+            -moz-appearance: textfield;
+        }
+
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <pre>
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣤⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⣿⣿⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⣿⣿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⣾⣿⣿⣿⣿⣿⣿⣧⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⣿⣿⣿⣿⣿⣿⣧⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣿⣿⣿⣇⠀⠀⠀⠀⠀⠀⠀⢀⣿⣿⣿⣿⣿⣿⣿⣿⡆⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⢰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⢀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣧⠀⠀⠀⠀⠀⢰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⢸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡄⠀⠀⠀⢀⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠈⣿⣿⣿⣿⣿⣿⠟⠉⠀⠀⠀⠙⢿⣿⣿⣿⣿⣿⣿⣿⡿⠋⠀⠀⠙⢻⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⠃⠀⠀⠀⠀⣠⣄⠀⢻⣿⣿⣿⣿⣿⡿⠀⣠⣄⠀⠀⠀⢻⣿⣿⣏⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⣾⣿⣿⣿⣿⠀⠀⠀⠀⠰⣿⣿⠀⢸⣿⣿⣿⣿⣿⡇⠀⣿⣿⡇⠀⠀⢸⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣄⠀⠀⠀⠀⠙⠃⠀⣼⣿⣿⣿⣿⣿⣇⠀⠙⠛⠁⠀⠀⣼⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣿⣷⣤⣄⣀⣠⣤⣾⣿⣿⣿⣿⣽⣿⣿⣦⣄⣀⣀⣤⣾⣿⣿⣿⣿⠃⠀⠀⢀⣀⠀⠀
+⠰⡶⠶⠶⠶⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡟⠛⠉⠉⠙⠛⠋⠀
+⠀⠀⢀⣀⣠⣤⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠷⠶⠶⠶⢤⣤⣀⠀
+⠀⠛⠋⠉⠁⠀⣀⣴⡿⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣯⣤⣀⡀⠀⠀⠀⠀⠘⠃
+⠀⠀⢀⣤⡶⠟⠉⠁⠀⠀⠉⠛⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠟⠉⠀⠀⠀⠉⠙⠳⠶⣄⡀⠀⠀
+⠀⠀⠙⠁⠀⠀⠀⠀⠀⠀⠀⠀⢰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠁⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+        </pre>
+        <i>Greg's feed</i>
+        <br>
+        <i>––</i>
+        <div class="header-controls">
+            <div class="header-main-buttons">
+                <button id="reload-btn" class="action-btn">Reload Feed</button>
+                <button id="archive-toggle-btn" class="action-btn">Visit archive</button>
+            </div>
+            <div class="theme-switcher">
+                <button class="action-btn theme-btn" data-theme="light" title="Light">Light</button>
+                <button class="action-btn theme-btn" data-theme="midnight" title="Midnight">Midnight</button>
+                <button class="action-btn theme-btn" data-theme="earth" title="Earth">Earth</button>
+                <button class="action-btn theme-btn" data-theme="post-it" title="Post-it">Post-it</button>
+            </div>
+        </div>
+        <input type="text" id="search-bar" placeholder="Search feed">
+        <div id="articles-container"></div>
+    </div>
+
+    <div id="modal-overlay" class="modal-overlay"></div>
+    <div id="article-modal" class="modal-content">
+        <iframe id="modal-iframe"></iframe>
+        <div class="modal-footer">
+            <div class="font-size-control">
+                <label for="font-size-input">Font Size:</label>
+                <input type="number" id="font-size-input" value="16" min="8" max="48">
+            </div>
+            <button id="copyBtn" class="action-btn">Copy title/URL</button>
+            <button id="close-modal-btn" class="action-btn">Show less</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.basic.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            let allEntries = [];
+            let isShowingArchive = false;
+            let fuse;
+            let loadingAnimation;
+            const articlesContainer = document.getElementById('articles-container');
+            const modalIframe = document.getElementById('modal-iframe');
+            const archiveToggleButton = document.getElementById('archive-toggle-btn');
+            const searchBar = document.getElementById('search-bar');
+
+            document.getElementById('modal-overlay').style.display = 'none';
+            document.getElementById('article-modal').style.display = 'none';
+
+            const getArchivedIds = () => JSON.parse(localStorage.getItem('greg_archived_posts') || '[]');
+            const saveArchivedIds = (ids) => localStorage.setItem('greg_archived_posts', JSON.stringify(Array.from(new Set(ids))));
+
+            const startLoadingAnimation = () => {
+                const loadingMessage = articlesContainer.querySelector('.loading-message');
+                if (!loadingMessage) return;
+                const loadingSpan = loadingMessage.querySelector('span');
+                if (!loadingSpan) return;
+                let dotCount = 1;
+                loadingAnimation = setInterval(() => {
+                    dotCount = (dotCount % 3) + 1;
+                    loadingSpan.textContent = '.'.repeat(dotCount);
+                }, 400);
+            };
+
+            const stopLoadingAnimation = () => {
+                if (loadingAnimation) clearInterval(loadingAnimation);
+            };
+
+            const updateIframeTheme = () => {
+                if (!modalIframe.contentWindow || !modalIframe.contentWindow.document.head) return;
+                const computedStyle = getComputedStyle(document.body);
+                const iframeDoc = modalIframe.contentWindow.document;
+                let style = iframeDoc.getElementById('dynamic-theme-style');
+                if (!style) {
+                    style = iframeDoc.createElement('style');
+                    style.id = 'dynamic-theme-style';
+                    iframeDoc.head.appendChild(style);
+                }
+                style.innerHTML = `
+                    body {
+                        font-family: 'Times New Roman', Times, serif;
+                        line-height: 1.6; margin: 10px; padding: 0;
+                        background-color: ${computedStyle.getPropertyValue('--bg-modal')};
+                        color: ${computedStyle.getPropertyValue('--color-text-popup')};
+                    }
+                    h2 { margin-top: 0; font-size: 1.5em; }
+                    h2 a { color: ${computedStyle.getPropertyValue('--color-accent')}; text-decoration: none; }
+                    p.meta { color: ${computedStyle.getPropertyValue('--color-meta')}; margin-top: -1em; margin-bottom: 1em; font-size: 0.9em; }
+                    hr { border: 0; border-top: 1px solid ${computedStyle.getPropertyValue('--color-border')}; margin: 1em 0; }
+                    .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; background: #000; margin-bottom: 20px; }
+                    .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+                    img { max-width: 100% !important; height: auto !important; }
+                    a { color: ${computedStyle.getPropertyValue('--color-accent')}; }
+                `;
+            };
+
+            const applyTheme = (theme) => {
+                document.body.className = `theme-${theme}`;
+                localStorage.setItem('preferredTheme', theme);
+                updateIframeTheme();
+            };
+
+            const renderCurrentView = () => {
+                const archivedIds = getArchivedIds();
+                const entriesToRender = isShowingArchive
+                    ? allEntries.filter(entry => archivedIds.includes(entry.link))
+                    : allEntries.filter(entry => !archivedIds.includes(entry.link));
+
+                archiveToggleButton.textContent = isShowingArchive ? "Return to feed" : "Visit archive";
+                searchBar.placeholder = isShowingArchive ? "Search archive" : "Search feed";
+                articlesContainer.innerHTML = '';
+
+                if (entriesToRender.length === 0) {
+                    articlesContainer.innerHTML = `<p class="loading-message">${isShowingArchive ? 'Your archive is empty.' : 'All caught up!'}</p>`;
+                    fuse = new Fuse([], {});
+                    return;
+                }
+
+                let searchableSubset = [];
+                entriesToRender.forEach((entry, i) => {
+                    const articleEl = document.createElement('article');
+                    articleEl.id = `article-${i}`;
+
+                    let dateStr = entry.pubDate ? ` &middot; ${new Date(entry.pubDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}` : "";
+                    const metaLine = `<strong>${entry.author}</strong>${dateStr}`;
+                    
+                    let summaryHTML = "";
+                    let readAllButtonHTML = "";
+
+                    if (entry.source_type === 'youtube' && entry.video_id) {
+                        summaryHTML = `
+                            <div class="video-container">
+                                <iframe src="https://www.youtube.com/embed/${entry.video_id}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                            </div>`;
+                        
+                        const modalVideoEmbed = `<div class="video-container">${summaryHTML}</div><hr>`;
+                        const iframeHeader = `<h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2><p class="meta">${metaLine}</p>`;
+                        const iframeBody = iframeHeader + modalVideoEmbed + entry.description;
+                        const iframeContent = `<!DOCTYPE html><html><head></head><body>${iframeBody}</body></html>`;
+                        const escapedIframeContent = iframeContent.replace(/"/g, '&quot;');
+                        const escapedLink = entry.link.replace(/"/g, '&quot;');
+                        const escapedTitle = entry.title.replace(/"/g, '&quot;');
+                        readAllButtonHTML = `<button class="action-btn read-more-btn" data-srcdoc="${escapedIframeContent}" data-link="${escapedLink}" data-title="${escapedTitle}">Read all</button>`;
+                        searchableSubset.push({ "id": articleEl.id, "title": entry.title, "author": entry.author, "summary": "YouTube video" });
+                    } else {
+                        const plainTextDesc = new DOMParser().parseFromString(entry.description, 'text/html').body.textContent || '';
+                        const summary = (plainTextDesc.length > 250) ? plainTextDesc.substring(0, 250) + '...' : plainTextDesc;
+                        summaryHTML = `<div class="summary">${summary}</div>`;
+                        searchableSubset.push({ "id": articleEl.id, "title": entry.title, "author": entry.author, "summary": summary });
+
+                        const iframeHeader = `<h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2><p class="meta">${metaLine}</p><hr>`;
+                        const iframeBody = iframeHeader + entry.description;
+                        const iframeContent = `<!DOCTYPE html><html><head></head><body>${iframeBody}</body></html>`;
+                        const escapedIframeContent = iframeContent.replace(/"/g, '&quot;');
+                        const escapedLink = entry.link.replace(/"/g, '&quot;');
+                        const escapedTitle = entry.title.replace(/"/g, '&quot;');
+                        readAllButtonHTML = `<button class="action-btn read-more-btn" data-srcdoc="${escapedIframeContent}" data-link="${escapedLink}" data-title="${escapedTitle}">Read all</button>`;
+                    }
+
+                    const actionButton = isShowingArchive
+                        ? `<button class="action-btn reinstate-btn" data-link="${entry.link}">Reinstate</button>`
+                        : `<button class="action-btn done-btn" data-link="${entry.link}">Done</button>`;
+
+                    articleEl.innerHTML = `
+                        <h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2>
+                        <div class="meta">${metaLine}</div>
+                        ${summaryHTML}
+                        <div class="article-actions">
+                            ${readAllButtonHTML}
+                            ${actionButton}
+                        </div>
+                    `;
+                    articlesContainer.appendChild(articleEl);
+                });
+                fuse = new Fuse(searchableSubset, { keys: ['title', 'author', 'summary'], includeScore: true, threshold: 0.4 });
+            };
+
+            const loadFeed = async () => {
+                stopLoadingAnimation();
+                articlesContainer.innerHTML = '<p class="loading-message">Building feed<span>.</span></p>';
+                startLoadingAnimation();
+                try {
+                    const response = await fetch('/api/feed');
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    allEntries = await response.json();
+                    stopLoadingAnimation();
+                    renderCurrentView();
+                } catch (error) {
+                    stopLoadingAnimation();
+                    articlesContainer.innerHTML = '<p class="loading-message">Failed to load feed. Is the Python server running?</p>';
+                    console.error('Error fetching feed:', error);
+                }
+            };
+            
+            document.getElementById('reload-btn').addEventListener('click', loadFeed);
+            archiveToggleButton.addEventListener('click', () => {
+                isShowingArchive = !isShowingArchive;
+                searchBar.value = '';
+                renderCurrentView();
+            });
+
+            articlesContainer.addEventListener('click', function (e) {
+                const target = e.target;
+                if (target.classList.contains('done-btn') || target.classList.contains('reinstate-btn')) {
+                    const link = target.dataset.link;
+                    let archivedIds = getArchivedIds();
+                    if (target.classList.contains('done-btn')) {
+                        if (!archivedIds.includes(link)) archivedIds.push(link);
+                    } else {
+                        archivedIds = archivedIds.filter(id => id !== link);
+                    }
+                    saveArchivedIds(archivedIds);
+                    renderCurrentView();
+                }
+                else if (target.classList.contains('read-more-btn')) {
+                    const modalOverlay = document.getElementById('modal-overlay');
+                    const articleModal = document.getElementById('article-modal');
+                    const copyBtn = document.getElementById('copyBtn');
+                    const fontSizeInput = document.getElementById('font-size-input');
+
+                    copyBtn.dataset.link = target.dataset.link;
+                    copyBtn.dataset.title = target.dataset.title;
+
+                    const savedSize = localStorage.getItem('preferredFontSize');
+                    if (savedSize) fontSizeInput.value = savedSize;
+
+                    modalIframe.srcdoc = target.dataset.srcdoc;
+                    modalOverlay.style.display = 'block';
+                    articleModal.style.display = 'flex';
+                }
+            });
+
+            const closeModal = () => {
+                document.getElementById('article-modal').style.display = 'none';
+                document.getElementById('modal-overlay').style.display = 'none';
+                modalIframe.srcdoc = '';
+            };
+
+            document.getElementById('close-modal-btn').addEventListener('click', closeModal);
+            document.getElementById('modal-overlay').addEventListener('click', closeModal);
+            document.getElementById('font-size-input').addEventListener('input', function () {
+                const newSize = this.value;
+                localStorage.setItem('preferredFontSize', newSize);
+                if (modalIframe.contentWindow && newSize >= 8) {
+                    modalIframe.contentWindow.document.body.style.fontSize = newSize + 'px';
+                }
+            });
+            document.getElementById('copyBtn').addEventListener('click', function () {
+                const title = this.dataset.title;
+                const link = this.dataset.link;
+                if (!title || !link) return;
+                const textToCopy = `\n${title}\n${link}`;
+                navigator.clipboard.writeText(textToCopy).then(() => {
+                    const originalText = this.textContent;
+                    this.textContent = 'Copied!';
+                    setTimeout(() => { this.textContent = originalText; }, 1500);
+                }).catch(err => console.error('Failed to copy text: ', err));
+            });
+            modalIframe.addEventListener('load', () => {
+                updateIframeTheme();
+                const size = document.getElementById('font-size-input').value;
+                if (modalIframe.contentWindow && size >= 8) {
+                    modalIframe.contentWindow.document.body.style.fontSize = size + 'px';
+                }
+            });
+
+            document.querySelectorAll('.theme-btn').forEach(button => {
+                button.addEventListener('click', () => applyTheme(button.dataset.theme));
+            });
+
+            searchBar.addEventListener('input', (e) => {
+                const query = e.target.value.trim().toLowerCase();
+                const allArticleElements = articlesContainer.querySelectorAll('article');
+                if (query === '') {
+                    allArticleElements.forEach(article => article.style.display = 'block');
+                    return;
+                }
+                if (!fuse) return;
+                const results = fuse.search(query);
+                const visibleArticleIds = new Set(results.map(result => result.item.id));
+                allArticleElements.forEach(article => {
+                    article.style.display = visibleArticleIds.has(article.id) ? 'block' : 'none';
+                });
+            });
+
+            loadFeed();
+        });
+    </script>
+</body>
+
+</html>
