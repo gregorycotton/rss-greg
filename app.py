@@ -5,8 +5,8 @@ from bs4 import BeautifulSoup
 import datetime
 import pytz
 import json
-import re  # ADD THIS LINE
-from urllib.parse import urlparse, parse_qs # ADD THIS LINE
+import re
+from urllib.parse import urlparse, parse_qs
 
 app = Flask(__name__)
 
