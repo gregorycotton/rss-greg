@@ -1,4 +1,4 @@
-# Greg's RSS feed
+# Feed
 Self-hosted, personal feed aggregator, built as a lightweight Tauri desktop app.
 
 Features a live button to trigger feed reload, search, persistent multi-theme switcher, the ability to parse and embed YouTube videos directly, a SQLite-backed archive, and a modal popup to display full articles or video descriptions complete with controls for adjusting font size.
@@ -18,7 +18,7 @@ Build a Dock-pinnable macOS app with:
 npm run build
 ```
 
-The built app lands at `src-tauri/target/release/bundle/macos/Greg's Feed.app`.
+The built app lands at `src-tauri/target/release/bundle/macos/Feed.app`.
 
 ## Storage
 
