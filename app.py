@@ -1,10 +1,13 @@
 # app.py
 import os
 import datetime
+import hashlib
 import re
+import sqlite3
+from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 import feedparser
 from bs4 import BeautifulSoup
 import pytz
@@ -12,6 +15,7 @@ from dotenv import load_dotenv
 
 app = Flask(__name__)
 load_dotenv()
+DB_PATH = Path(os.getenv("RSS_FEED_DB", Path(app.root_path) / "archive.sqlite3"))
 
 def get_youtube_video_id(url):
     """Extracts the YouTube video ID from a URL."""
@@ -20,6 +24,84 @@ def get_youtube_video_id(url):
     query = urlparse(url).query
     params = parse_qs(query)
     return params.get("v", [None])[0]
+
+def get_article_id(url):
+    return hashlib.sha256(url.strip().encode("utf-8")).hexdigest()
+
+def get_db():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(DB_PATH)
+    connection.row_factory = sqlite3.Row
+    return connection
+
+def init_db():
+    with get_db() as db:
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS archived_articles (
+                article_id TEXT PRIMARY KEY,
+                url TEXT NOT NULL,
+                title TEXT,
+                author TEXT,
+                published_at TEXT,
+                archived_at TEXT NOT NULL,
+                source_type TEXT
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS archived_articles_url_idx
+            ON archived_articles (url)
+            """
+        )
+
+def get_archived_ids():
+    with get_db() as db:
+        rows = db.execute("SELECT article_id FROM archived_articles").fetchall()
+    return [row["article_id"] for row in rows]
+
+def archive_article(entry):
+    url = entry.get("link", "").strip()
+    if not url:
+        raise ValueError("Archived articles require a link.")
+
+    article_id = get_article_id(url)
+    archived_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    with get_db() as db:
+        db.execute(
+            """
+            INSERT INTO archived_articles (
+                article_id, url, title, author, published_at, archived_at, source_type
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(article_id) DO UPDATE SET
+                url = excluded.url,
+                title = excluded.title,
+                author = excluded.author,
+                published_at = excluded.published_at,
+                source_type = excluded.source_type
+            """,
+            (
+                article_id,
+                url,
+                entry.get("title"),
+                entry.get("author"),
+                entry.get("pubDate"),
+                archived_at,
+                entry.get("source_type", "blog"),
+            ),
+        )
+
+    return article_id
+
+def reinstate_article(article_id):
+    with get_db() as db:
+        db.execute(
+            "DELETE FROM archived_articles WHERE article_id = ?",
+            (article_id,),
+        )
 
 def load_sites():
     sites = {}
@@ -54,6 +136,7 @@ def load_sites():
 
 
 SITES = load_sites()
+init_db()
 
 def fetch_entries():
     all_entries = []
@@ -73,6 +156,7 @@ def fetch_entries():
                          pubDate_str = dt_aware.isoformat()
 
                     entry_data = {
+                        "id": get_article_id(entry.link),
                         "author": name, "title": entry.title, "link": entry.link,
                         "description": description, "pubDate": pubDate_str,
                         "is_summary": False
@@ -104,6 +188,26 @@ def index():
 def api_feed():
     entries = fetch_entries()
     return jsonify(entries)
+
+@app.route('/api/archive')
+def api_archive():
+    return jsonify({"archived_ids": get_archived_ids()})
+
+@app.route('/api/archive', methods=['POST'])
+def api_archive_article():
+    entry = request.get_json(silent=True) or {}
+
+    try:
+        article_id = archive_article(entry)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+
+    return jsonify({"article_id": article_id})
+
+@app.route('/api/archive/<article_id>', methods=['DELETE'])
+def api_reinstate_article(article_id):
+    reinstate_article(article_id)
+    return jsonify({"article_id": article_id})
 
 @app.route('/api/health')
 def api_health():

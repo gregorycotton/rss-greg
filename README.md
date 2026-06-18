@@ -15,6 +15,10 @@ python app.py
 Feed sources live in a local `.env` file so they do not get pushed to GitHub.
 Use `.env.example` for the expected `RSS_SITE_...` format.
 
+Archived article state lives in `archive.sqlite3`. Only articles marked Done are
+stored, keyed by a stable hash of their URL, so feed reloads do not create new
+rows for every article.
+
 ## Desktop app
 
 ```sh

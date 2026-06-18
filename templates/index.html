@@ -315,6 +315,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             let allEntries = [];
+            let archivedIds = new Set();
             let isShowingArchive = false;
             let fuse;
             let loadingAnimation;
@@ -326,8 +327,57 @@
             document.getElementById('modal-overlay').style.display = 'none';
             document.getElementById('article-modal').style.display = 'none';
 
-            const getArchivedIds = () => JSON.parse(localStorage.getItem('greg_archived_posts') || '[]');
-            const saveArchivedIds = (ids) => localStorage.setItem('greg_archived_posts', JSON.stringify(Array.from(new Set(ids))));
+            const getLegacyArchivedLinks = () => {
+                try {
+                    return JSON.parse(localStorage.getItem('greg_archived_posts') || '[]');
+                } catch {
+                    return [];
+                }
+            };
+
+            const archivePayload = (entry) => ({
+                id: entry.id,
+                link: entry.link,
+                title: entry.title,
+                author: entry.author,
+                pubDate: entry.pubDate,
+                source_type: entry.source_type
+            });
+
+            const loadArchiveStatus = async () => {
+                const response = await fetch('/api/archive');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                archivedIds = new Set(data.archived_ids || []);
+            };
+
+            const archiveEntry = async (entry) => {
+                const response = await fetch('/api/archive', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(archivePayload(entry))
+                });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                archivedIds.add(data.article_id || entry.id);
+            };
+
+            const reinstateEntry = async (articleId) => {
+                const response = await fetch(`/api/archive/${articleId}`, { method: 'DELETE' });
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                archivedIds.delete(articleId);
+            };
+
+            const migrateLegacyArchive = async () => {
+                const legacyLinks = new Set(getLegacyArchivedLinks());
+                if (legacyLinks.size === 0) return;
+
+                for (const link of legacyLinks) {
+                    const entry = allEntries.find(entry => entry.link === link) || { link };
+                    await archiveEntry(entry);
+                }
+                localStorage.removeItem('greg_archived_posts');
+            };
 
             const startLoadingAnimation = () => {
                 const loadingMessage = articlesContainer.querySelector('.loading-message');
@@ -380,10 +430,9 @@
             };
 
             const renderCurrentView = () => {
-                const archivedIds = getArchivedIds();
                 const entriesToRender = isShowingArchive
-                    ? allEntries.filter(entry => archivedIds.includes(entry.link))
-                    : allEntries.filter(entry => !archivedIds.includes(entry.link));
+                    ? allEntries.filter(entry => archivedIds.has(entry.id))
+                    : allEntries.filter(entry => !archivedIds.has(entry.id));
 
                 archiveToggleButton.textContent = isShowingArchive ? "Return to feed" : "Visit archive";
                 searchBar.placeholder = isShowingArchive ? "Search archive" : "Search feed";
@@ -437,8 +486,8 @@
                     }
 
                     const actionButton = isShowingArchive
-                        ? `<button class="action-btn reinstate-btn" data-link="${entry.link}">Reinstate</button>`
-                        : `<button class="action-btn done-btn" data-link="${entry.link}">Done</button>`;
+                        ? `<button class="action-btn reinstate-btn" data-id="${entry.id}">Reinstate</button>`
+                        : `<button class="action-btn done-btn" data-id="${entry.id}">Done</button>`;
 
                     articleEl.innerHTML = `
                         <h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2>
@@ -462,6 +511,8 @@
                     const response = await fetch('/api/feed');
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     allEntries = await response.json();
+                    await loadArchiveStatus();
+                    await migrateLegacyArchive();
                     stopLoadingAnimation();
                     renderCurrentView();
                 } catch (error) {
@@ -478,18 +529,24 @@
                 renderCurrentView();
             });
 
-            articlesContainer.addEventListener('click', function (e) {
+            articlesContainer.addEventListener('click', async function (e) {
                 const target = e.target;
                 if (target.classList.contains('done-btn') || target.classList.contains('reinstate-btn')) {
-                    const link = target.dataset.link;
-                    let archivedIds = getArchivedIds();
-                    if (target.classList.contains('done-btn')) {
-                        if (!archivedIds.includes(link)) archivedIds.push(link);
-                    } else {
-                        archivedIds = archivedIds.filter(id => id !== link);
+                    const articleId = target.dataset.id;
+                    const entry = allEntries.find(item => item.id === articleId);
+                    target.disabled = true;
+                    try {
+                        if (target.classList.contains('done-btn')) {
+                            if (!entry) throw new Error('Could not find article to archive.');
+                            await archiveEntry(entry);
+                        } else {
+                            await reinstateEntry(articleId);
+                        }
+                        renderCurrentView();
+                    } catch (error) {
+                        console.error('Error updating archive:', error);
+                        target.disabled = false;
                     }
-                    saveArchivedIds(archivedIds);
-                    renderCurrentView();
                 }
                 else if (target.classList.contains('read-more-btn')) {
                     const modalOverlay = document.getElementById('modal-overlay');
