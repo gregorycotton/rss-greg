@@ -311,13 +311,13 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.basic.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            const invoke = window.__TAURI__.core.invoke;
             let allEntries = [];
             let archivedIds = new Set();
+            let searchableEntries = [];
             let isShowingArchive = false;
-            let fuse;
             let loadingAnimation;
             const articlesContainer = document.getElementById('articles-container');
             const modalIframe = document.getElementById('modal-iframe');
@@ -345,26 +345,16 @@
             });
 
             const loadArchiveStatus = async () => {
-                const response = await fetch('/api/archive');
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                archivedIds = new Set(data.archived_ids || []);
+                archivedIds = new Set(await invoke('get_archived_ids'));
             };
 
             const archiveEntry = async (entry) => {
-                const response = await fetch('/api/archive', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(archivePayload(entry))
-                });
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                archivedIds.add(data.article_id || entry.id);
+                const articleId = await invoke('archive_article', { entry: archivePayload(entry) });
+                archivedIds.add(articleId || entry.id);
             };
 
             const reinstateEntry = async (articleId) => {
-                const response = await fetch(`/api/archive/${articleId}`, { method: 'DELETE' });
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                await invoke('reinstate_article', { articleId });
                 archivedIds.delete(articleId);
             };
 
@@ -440,11 +430,11 @@
 
                 if (entriesToRender.length === 0) {
                     articlesContainer.innerHTML = `<p class="loading-message">${isShowingArchive ? 'Your archive is empty.' : 'All caught up!'}</p>`;
-                    fuse = new Fuse([], {});
+                    searchableEntries = [];
                     return;
                 }
 
-                let searchableSubset = [];
+                searchableEntries = [];
                 entriesToRender.forEach((entry, i) => {
                     const articleEl = document.createElement('article');
                     articleEl.id = `article-${i}`;
@@ -469,12 +459,12 @@
                         const escapedLink = entry.link.replace(/"/g, '&quot;');
                         const escapedTitle = entry.title.replace(/"/g, '&quot;');
                         readAllButtonHTML = `<button class="action-btn read-more-btn" data-srcdoc="${escapedIframeContent}" data-link="${escapedLink}" data-title="${escapedTitle}">Read all</button>`;
-                        searchableSubset.push({ "id": articleEl.id, "title": entry.title, "author": entry.author, "summary": "YouTube video" });
+                        searchableEntries.push({ "id": articleEl.id, "title": entry.title, "author": entry.author, "summary": "YouTube video" });
                     } else {
                         const plainTextDesc = new DOMParser().parseFromString(entry.description, 'text/html').body.textContent || '';
                         const summary = (plainTextDesc.length > 250) ? plainTextDesc.substring(0, 250) + '...' : plainTextDesc;
                         summaryHTML = `<div class="summary">${summary}</div>`;
-                        searchableSubset.push({ "id": articleEl.id, "title": entry.title, "author": entry.author, "summary": summary });
+                        searchableEntries.push({ "id": articleEl.id, "title": entry.title, "author": entry.author, "summary": summary });
 
                         const iframeHeader = `<h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2><p class="meta">${metaLine}</p><hr>`;
                         const iframeBody = iframeHeader + entry.description;
@@ -500,7 +490,6 @@
                     `;
                     articlesContainer.appendChild(articleEl);
                 });
-                fuse = new Fuse(searchableSubset, { keys: ['title', 'author', 'summary'], includeScore: true, threshold: 0.4 });
             };
 
             const loadFeed = async () => {
@@ -508,16 +497,14 @@
                 articlesContainer.innerHTML = '<p class="loading-message">Building feed<span>.</span></p>';
                 startLoadingAnimation();
                 try {
-                    const response = await fetch('/api/feed');
-                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                    allEntries = await response.json();
+                    allEntries = await invoke('get_feed');
                     await loadArchiveStatus();
                     await migrateLegacyArchive();
                     stopLoadingAnimation();
                     renderCurrentView();
                 } catch (error) {
                     stopLoadingAnimation();
-                    articlesContainer.innerHTML = '<p class="loading-message">Failed to load feed. Is the Python server running?</p>';
+                    articlesContainer.innerHTML = '<p class="loading-message">Failed to load feed.</p>';
                     console.error('Error fetching feed:', error);
                 }
             };
@@ -611,9 +598,11 @@
                     allArticleElements.forEach(article => article.style.display = 'block');
                     return;
                 }
-                if (!fuse) return;
-                const results = fuse.search(query);
-                const visibleArticleIds = new Set(results.map(result => result.item.id));
+                const visibleArticleIds = new Set(
+                    searchableEntries
+                        .filter(entry => `${entry.title} ${entry.author} ${entry.summary}`.toLowerCase().includes(query))
+                        .map(entry => entry.id)
+                );
                 allArticleElements.forEach(article => {
                     article.style.display = visibleArticleIds.has(article.id) ? 'block' : 'none';
                 });

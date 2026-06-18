@@ -1,26 +1,15 @@
 # shell.nix
 with import <nixpkgs> {};
 
-let
-  python-with-packages = python3.withPackages (ps: [
-    ps.feedparser
-    ps.beautifulsoup4
-    ps.lxml
-    ps.pytz
-    ps.flask
-    ps.python-dotenv
-  ]);
-in
-  mkShell {
-    buildInputs = [
-      python-with-packages
-      cargo
-      nodejs
-      rustc
-    ];
-    shellHook = ''
-      echo "--- Greg's feed shell ---"
-      echo "Flask environment is ready."
-      echo "Run 'python app.py' to start the server."
-    '';
-  }
+mkShell {
+  buildInputs = [
+    cargo
+    nodejs
+    rustc
+  ];
+
+  shellHook = ''
+    echo "--- Greg's feed desktop shell ---"
+    echo "Run 'npm install' once, then 'npm run dev' or 'npm run build'."
+  '';
+}

@@ -1,161 +1,349 @@
 use std::{
-    fs::OpenOptions,
-    io::{Read, Write},
-    net::{SocketAddr, TcpStream},
-    path::PathBuf,
-    process::{Child, Command, Stdio},
-    sync::Mutex,
-    thread,
-    time::{Duration, Instant},
+    fs,
+    io::Cursor,
+    path::{Path, PathBuf},
+    time::Duration,
 };
 
-use tauri::Manager;
+use feed_rs::parser;
+use reqwest::blocking::Client;
+use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use tauri::{Manager, State};
+use url::Url;
 
-const BACKEND_HOST: &str = "127.0.0.1";
-const BACKEND_PORT: u16 = 5123;
+const DEFAULT_FEEDS: &str = include_str!(concat!(env!("OUT_DIR"), "/default-feeds.json"));
 
-struct BackendProcess(Mutex<Option<Child>>);
+#[derive(Clone)]
+struct AppState {
+    db_path: PathBuf,
+    feeds_path: PathBuf,
+    client: Client,
+}
 
-impl Drop for BackendProcess {
-    fn drop(&mut self) {
-        if let Ok(mut child) = self.0.lock() {
-            if let Some(child) = child.as_mut() {
-                let _ = child.kill();
-                let _ = child.wait();
-            }
-        }
-    }
+#[derive(Debug, Deserialize)]
+struct FeedSource {
+    name: String,
+    rss: String,
+    #[serde(default = "default_source_type", rename = "type")]
+    source_type: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct FeedEntry {
+    id: String,
+    author: String,
+    title: String,
+    link: String,
+    description: String,
+    #[serde(rename = "pubDate")]
+    pub_date: String,
+    is_summary: bool,
+    source_type: String,
+    video_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ArchiveEntry {
+    link: String,
+    title: Option<String>,
+    author: Option<String>,
+    #[serde(rename = "pubDate")]
+    pub_date: Option<String>,
+    source_type: Option<String>,
+}
+
+fn default_source_type() -> String {
+    "blog".to_string()
 }
 
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            let mut backend = start_backend_if_needed()?;
-            wait_for_backend(backend.as_mut())?;
+            let app_data_dir = app.path().app_data_dir()?;
+            fs::create_dir_all(&app_data_dir)?;
 
-            app.manage(BackendProcess(Mutex::new(backend)));
+            let feeds_path = app_data_dir.join("feeds.json");
+            if !feeds_path.exists() {
+                fs::write(&feeds_path, DEFAULT_FEEDS)?;
+            }
 
-            let window_config = app
-                .config()
-                .app
-                .windows
-                .first()
-                .ok_or("missing main window config")?;
+            let db_path = app_data_dir.join("archive.sqlite3");
+            init_db(&db_path)?;
 
-            tauri::WebviewWindowBuilder::from_config(app.handle(), window_config)?.build()?;
+            let client = Client::builder()
+                .timeout(Duration::from_secs(20))
+                .user_agent("GregsFeed/0.1 Tauri")
+                .build()?;
+
+            app.manage(AppState {
+                db_path,
+                feeds_path,
+                client,
+            });
 
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![
+            get_feed,
+            get_archived_ids,
+            archive_article,
+            reinstate_article,
+            get_storage_info
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");
 }
 
-fn start_backend_if_needed() -> Result<Option<Child>, Box<dyn std::error::Error>> {
-    if backend_is_healthy() {
-        return Ok(None);
-    }
-
-    let project_root = find_project_root()?;
-    let nix_shell = find_nix_shell()?;
-    let log_path = std::env::temp_dir().join("gregs-feed-backend.log");
-    let stdout = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)?;
-    let stderr = stdout.try_clone()?;
-
-    let child = Command::new(nix_shell)
-        .current_dir(project_root)
-        .env("RSS_FEED_HOST", BACKEND_HOST)
-        .env("RSS_FEED_PORT", BACKEND_PORT.to_string())
-        .env("RSS_FEED_DEBUG", "0")
-        .arg("--run")
-        .arg("python app.py")
-        .stdin(Stdio::null())
-        .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr))
-        .spawn()?;
-
-    Ok(Some(child))
+#[tauri::command]
+async fn get_feed(state: State<'_, AppState>) -> Result<Vec<FeedEntry>, String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || fetch_entries(&state))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
-fn wait_for_backend(backend: Option<&mut Child>) -> Result<(), Box<dyn std::error::Error>> {
-    let deadline = Instant::now() + Duration::from_secs(30);
-    let mut backend = backend;
+#[tauri::command]
+async fn get_archived_ids(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let db_path = state.db_path.clone();
+    tauri::async_runtime::spawn_blocking(move || read_archived_ids(&db_path))
+        .await
+        .map_err(|error| error.to_string())?
+}
 
-    while Instant::now() < deadline {
-        if backend_is_healthy() {
-            return Ok(());
+#[tauri::command]
+async fn archive_article(
+    state: State<'_, AppState>,
+    entry: ArchiveEntry,
+) -> Result<String, String> {
+    let db_path = state.db_path.clone();
+    tauri::async_runtime::spawn_blocking(move || write_archived_article(&db_path, entry))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn reinstate_article(
+    state: State<'_, AppState>,
+    article_id: String,
+) -> Result<String, String> {
+    let db_path = state.db_path.clone();
+    tauri::async_runtime::spawn_blocking(move || delete_archived_article(&db_path, &article_id))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn get_storage_info(state: State<'_, AppState>) -> StorageInfo {
+    StorageInfo {
+        feeds_path: state.feeds_path.display().to_string(),
+        db_path: state.db_path.display().to_string(),
+    }
+}
+
+#[derive(Serialize)]
+struct StorageInfo {
+    feeds_path: String,
+    db_path: String,
+}
+
+fn init_db(db_path: &Path) -> Result<(), String> {
+    let connection = Connection::open(db_path).map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            r#"
+            CREATE TABLE IF NOT EXISTS archived_articles (
+                article_id TEXT PRIMARY KEY,
+                url TEXT NOT NULL,
+                title TEXT,
+                author TEXT,
+                published_at TEXT,
+                archived_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                source_type TEXT
+            )
+            "#,
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS archived_articles_url_idx
+            ON archived_articles (url)
+            "#,
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+fn load_sources(feeds_path: &Path) -> Result<Vec<FeedSource>, String> {
+    let config = fs::read_to_string(feeds_path).map_err(|error| error.to_string())?;
+    serde_json::from_str(&config).map_err(|error| format!("Could not parse feeds.json: {error}"))
+}
+
+fn fetch_entries(state: &AppState) -> Result<Vec<FeedEntry>, String> {
+    let sources = load_sources(&state.feeds_path)?;
+    let mut entries = Vec::new();
+
+    for source in sources {
+        match fetch_source_entries(state, &source) {
+            Ok(mut source_entries) => entries.append(&mut source_entries),
+            Err(error) => eprintln!("Could not fetch RSS for {}: {error}", source.name),
+        }
+    }
+
+    entries.sort_by(|left, right| right.pub_date.cmp(&left.pub_date));
+    Ok(entries)
+}
+
+fn fetch_source_entries(state: &AppState, source: &FeedSource) -> Result<Vec<FeedEntry>, String> {
+    let response = state
+        .client
+        .get(&source.rss)
+        .send()
+        .map_err(|error| error.to_string())?
+        .error_for_status()
+        .map_err(|error| error.to_string())?
+        .bytes()
+        .map_err(|error| error.to_string())?;
+
+    let feed = parser::parse(Cursor::new(response)).map_err(|error| error.to_string())?;
+    let mut entries = Vec::new();
+
+    for entry in feed.entries.into_iter().take(10) {
+        let link = entry
+            .links
+            .first()
+            .map(|link| link.href.clone())
+            .unwrap_or_else(|| entry.id.clone());
+        if link.trim().is_empty() {
+            continue;
         }
 
-        if let Some(child) = backend.as_deref_mut() {
-            if let Some(status) = child.try_wait()? {
-                return Err(format!("backend exited before it was ready: {status}").into());
-            }
-        }
+        let title = entry
+            .title
+            .as_ref()
+            .map(|title| title.content.clone())
+            .unwrap_or_else(|| "Untitled".to_string());
+        let description = entry
+            .content
+            .as_ref()
+            .and_then(|content| content.body.clone())
+            .or_else(|| {
+                entry
+                    .summary
+                    .as_ref()
+                    .map(|summary| summary.content.clone())
+            })
+            .unwrap_or_default();
+        let pub_date = entry
+            .published
+            .or(entry.updated)
+            .map(|date| date.to_rfc3339())
+            .unwrap_or_default();
+        let source_type = source.source_type.clone();
+        let is_summary = source_type != "youtube" && looks_like_summary(&description);
+        let video_id = if source_type == "youtube" {
+            get_youtube_video_id(&link)
+        } else {
+            None
+        };
 
-        thread::sleep(Duration::from_millis(250));
+        entries.push(FeedEntry {
+            id: article_id(&link),
+            author: source.name.clone(),
+            title,
+            link,
+            description,
+            pub_date,
+            is_summary,
+            source_type,
+            video_id,
+        });
     }
 
-    Err("backend did not become ready within 30 seconds".into())
+    Ok(entries)
 }
 
-fn backend_is_healthy() -> bool {
-    let address = SocketAddr::from(([127, 0, 0, 1], BACKEND_PORT));
-    let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(200)) else {
-        return false;
-    };
-
-    let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
-    let request = format!(
-        "GET /api/health HTTP/1.1\r\nHost: {BACKEND_HOST}:{BACKEND_PORT}\r\nConnection: close\r\n\r\n"
-    );
-
-    if stream.write_all(request.as_bytes()).is_err() {
-        return false;
-    }
-
-    let mut response = String::new();
-    stream.read_to_string(&mut response).is_ok() && response.starts_with("HTTP/1.1 200")
+fn looks_like_summary(description: &str) -> bool {
+    let lower = description.to_lowercase();
+    description.trim_end().ends_with("...")
+        || lower.contains("read more")
+        || lower.contains("continue reading")
 }
 
-fn find_project_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let mut candidates = Vec::new();
-
-    if let Ok(root) = std::env::var("GREGS_FEED_ROOT") {
-        candidates.push(PathBuf::from(root));
-    }
-
-    if let Ok(current_dir) = std::env::current_dir() {
-        candidates.push(current_dir.clone());
-        if let Some(parent) = current_dir.parent() {
-            candidates.push(parent.to_path_buf());
-        }
-    }
-
-    if let Some(parent) = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent() {
-        candidates.push(parent.to_path_buf());
-    }
-
-    candidates
-        .into_iter()
-        .find(|path| path.join("app.py").is_file() && path.join("shell.nix").is_file())
-        .ok_or_else(|| "could not locate backend project root".into())
+fn get_youtube_video_id(link: &str) -> Option<String> {
+    let url = Url::parse(link).ok()?;
+    url.query_pairs()
+        .find(|(key, _)| key == "v")
+        .map(|(_, value)| value.into_owned())
 }
 
-fn find_nix_shell() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let mut candidates = vec![
-        PathBuf::from("/run/current-system/sw/bin/nix-shell"),
-        PathBuf::from("/nix/var/nix/profiles/default/bin/nix-shell"),
-        PathBuf::from("nix-shell"),
-    ];
+fn article_id(link: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(link.trim().as_bytes());
+    let digest = hasher.finalize();
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
 
-    if let Ok(home) = std::env::var("HOME") {
-        candidates.insert(2, PathBuf::from(home).join(".nix-profile/bin/nix-shell"));
+fn read_archived_ids(db_path: &Path) -> Result<Vec<String>, String> {
+    let connection = Connection::open(db_path).map_err(|error| error.to_string())?;
+    let mut statement = connection
+        .prepare("SELECT article_id FROM archived_articles")
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
+fn write_archived_article(db_path: &Path, entry: ArchiveEntry) -> Result<String, String> {
+    let link = entry.link.trim();
+    if link.is_empty() {
+        return Err("Archived articles require a link.".to_string());
     }
 
-    candidates
-        .into_iter()
-        .find(|path| path.is_file() || path == &PathBuf::from("nix-shell"))
-        .ok_or_else(|| "could not locate nix-shell".into())
+    let id = article_id(link);
+    let connection = Connection::open(db_path).map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            r#"
+            INSERT INTO archived_articles (
+                article_id, url, title, author, published_at, source_type
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(article_id) DO UPDATE SET
+                url = excluded.url,
+                title = excluded.title,
+                author = excluded.author,
+                published_at = excluded.published_at,
+                source_type = excluded.source_type
+            "#,
+            params![
+                id,
+                link,
+                entry.title,
+                entry.author,
+                entry.pub_date,
+                entry.source_type.unwrap_or_else(default_source_type)
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(article_id(link))
+}
+
+fn delete_archived_article(db_path: &Path, article_id: &str) -> Result<String, String> {
+    let connection = Connection::open(db_path).map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "DELETE FROM archived_articles WHERE article_id = ?",
+            params![article_id],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(article_id.to_string())
 }

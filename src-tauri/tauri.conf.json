@@ -4,21 +4,20 @@
   "version": "0.1.0",
   "identifier": "com.gregorycotton.gregs-feed",
   "build": {
-    "frontendDist": "http://127.0.0.1:5123"
+    "frontendDist": "../templates"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "label": "main",
         "title": "Greg's Feed",
-        "url": "http://127.0.0.1:5123",
         "width": 900,
         "height": 1000,
         "minWidth": 640,
         "minHeight": 640,
         "resizable": true,
-        "center": true,
-        "create": false
+        "center": true
       }
     ],
     "security": {
