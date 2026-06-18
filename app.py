@@ -1,14 +1,17 @@
 # app.py
-from flask import Flask, render_template, jsonify
-import feedparser
-from bs4 import BeautifulSoup
+import os
 import datetime
-import pytz
-import json
 import re
 from urllib.parse import urlparse, parse_qs
 
+from flask import Flask, render_template, jsonify
+import feedparser
+from bs4 import BeautifulSoup
+import pytz
+from dotenv import load_dotenv
+
 app = Flask(__name__)
+load_dotenv()
 
 def get_youtube_video_id(url):
     """Extracts the YouTube video ID from a URL."""
@@ -18,10 +21,39 @@ def get_youtube_video_id(url):
     params = parse_qs(query)
     return params.get("v", [None])[0]
 
-SITES = {
-    "Author name": {"rss": "website.com/rss.xml"},
-    "YouTuber name": {"rss": "https://www.youtube.com/feeds/videos.xml?channel_id=channelID", "type": "youtube"}
-}
+def load_sites():
+    sites = {}
+    site_indices = sorted(
+        {
+            int(match.group(1))
+            for key in os.environ
+            if (match := re.fullmatch(r"RSS_SITE_(\d+)_(NAME|RSS|TYPE)", key))
+        }
+    )
+
+    for index in site_indices:
+        prefix = f"RSS_SITE_{index}_"
+        name = os.getenv(f"{prefix}NAME")
+        rss_url = os.getenv(f"{prefix}RSS")
+        source_type = os.getenv(f"{prefix}TYPE", "").strip()
+
+        if not name or not rss_url:
+            print(f"Skipping incomplete RSS site config at RSS_SITE_{index}.")
+            continue
+
+        source = {"rss": rss_url}
+        if source_type:
+            source["type"] = source_type
+
+        sites[name] = source
+
+    if not sites:
+        print("No RSS sites configured. Copy .env.example to .env and add RSS_SITE entries.")
+
+    return sites
+
+
+SITES = load_sites()
 
 def fetch_entries():
     all_entries = []

@@ -5,4 +5,14 @@ Features a live button to trigger feed reload, a fuzzy search, persistent multi-
 
 I will be making updates to this project as my personal needs/use cases evolve.
 
+## Local setup
+
+```sh
+nix-shell
+python app.py
+```
+
+Feed sources live in a local `.env` file so they do not get pushed to GitHub.
+Use `.env.example` for the expected `RSS_SITE_...` format.
+
 <img src="https://raw.githubusercontent.com/gregorycotton/gregorycotton/refs/heads/main/ontology/images/rss-feed/rss-feed-home.jpg">

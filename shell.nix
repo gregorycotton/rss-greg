@@ -8,6 +8,7 @@ let
     ps.lxml
     ps.pytz
     ps.flask
+    ps.python-dotenv
   ]);
 in
   mkShell {
