@@ -22,11 +22,15 @@ struct AppState {
     client: Client,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct FeedSource {
     name: String,
     rss: String,
-    #[serde(default = "default_source_type", rename = "type")]
+    #[serde(
+        default = "default_source_type",
+        rename = "type",
+        skip_serializing_if = "is_default_source_type"
+    )]
     source_type: String,
 }
 
@@ -58,6 +62,10 @@ fn default_source_type() -> String {
     "blog".to_string()
 }
 
+fn is_default_source_type(source_type: &str) -> bool {
+    source_type == "blog"
+}
+
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
@@ -87,6 +95,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_feed,
+            get_feed_sources,
+            save_feed_sources,
             get_archived_ids,
             archive_article,
             reinstate_article,
@@ -94,6 +104,25 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Tauri application");
+}
+
+#[tauri::command]
+async fn get_feed_sources(state: State<'_, AppState>) -> Result<Vec<FeedSource>, String> {
+    let feeds_path = state.feeds_path.clone();
+    tauri::async_runtime::spawn_blocking(move || load_sources(&feeds_path))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn save_feed_sources(
+    state: State<'_, AppState>,
+    sources: Vec<FeedSource>,
+) -> Result<Vec<FeedSource>, String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || write_sources(&state, sources))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -181,6 +210,119 @@ fn init_db(db_path: &Path) -> Result<(), String> {
 fn load_sources(feeds_path: &Path) -> Result<Vec<FeedSource>, String> {
     let config = fs::read_to_string(feeds_path).map_err(|error| error.to_string())?;
     serde_json::from_str(&config).map_err(|error| format!("Could not parse feeds.json: {error}"))
+}
+
+fn write_sources(state: &AppState, sources: Vec<FeedSource>) -> Result<Vec<FeedSource>, String> {
+    let mut cleaned_sources = Vec::new();
+
+    for source in sources {
+        let name = source.name.trim().to_string();
+        let mut rss = source.rss.trim().to_string();
+        let source_type = match source.source_type.trim().to_lowercase().as_str() {
+            "" | "blog" => "blog".to_string(),
+            "youtube" => "youtube".to_string(),
+            other => return Err(format!("Unsupported source type: {other}")),
+        };
+
+        if name.is_empty() {
+            return Err("Feed names cannot be empty.".to_string());
+        }
+        if rss.is_empty() {
+            return Err(format!("{name} needs a feed URL."));
+        }
+
+        if source_type == "youtube" {
+            rss = normalize_youtube_feed_url(&state.client, &rss)?;
+        }
+
+        validate_feed_url(&rss)?;
+
+        cleaned_sources.push(FeedSource {
+            name,
+            rss,
+            source_type,
+        });
+    }
+
+    let serialized =
+        serde_json::to_string_pretty(&cleaned_sources).map_err(|error| error.to_string())?;
+    fs::write(&state.feeds_path, format!("{serialized}\n")).map_err(|error| error.to_string())?;
+    Ok(cleaned_sources)
+}
+
+fn validate_feed_url(url: &str) -> Result<(), String> {
+    let parsed = Url::parse(url).map_err(|error| format!("Invalid feed URL {url}: {error}"))?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(()),
+        scheme => Err(format!("Feed URL must use http or https, not {scheme}.")),
+    }
+}
+
+fn normalize_youtube_feed_url(client: &Client, input: &str) -> Result<String, String> {
+    if input.starts_with("UC") && !input.contains('/') {
+        return Ok(format!(
+            "https://www.youtube.com/feeds/videos.xml?channel_id={input}"
+        ));
+    }
+
+    let parsed =
+        Url::parse(input).map_err(|error| format!("Invalid YouTube URL {input}: {error}"))?;
+    let host = parsed.host_str().unwrap_or_default();
+    if !(host.ends_with("youtube.com") || host == "youtu.be") {
+        return Ok(input.to_string());
+    }
+
+    if parsed.path() == "/feeds/videos.xml"
+        && parsed.query().unwrap_or_default().contains("channel_id=")
+    {
+        return Ok(input.to_string());
+    }
+
+    if let Some(channel_id) =
+        parsed
+            .path_segments()
+            .and_then(|mut segments| match (segments.next(), segments.next()) {
+                (Some("channel"), Some(channel_id)) => Some(channel_id.to_string()),
+                _ => None,
+            })
+    {
+        return Ok(format!(
+            "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+        ));
+    }
+
+    let page = client
+        .get(input)
+        .send()
+        .map_err(|error| format!("Could not resolve YouTube channel URL: {error}"))?
+        .error_for_status()
+        .map_err(|error| format!("Could not resolve YouTube channel URL: {error}"))?
+        .text()
+        .map_err(|error| format!("Could not read YouTube channel page: {error}"))?;
+
+    let channel_id = extract_youtube_channel_id(&page)
+        .ok_or_else(|| "Could not find a YouTube channel ID on that page.".to_string())?;
+
+    Ok(format!(
+        "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+    ))
+}
+
+fn extract_youtube_channel_id(page: &str) -> Option<String> {
+    find_after_marker(page, "\"channelId\":\"")
+        .or_else(|| find_after_marker(page, "/channel/"))
+        .filter(|channel_id| channel_id.starts_with("UC"))
+}
+
+fn find_after_marker(page: &str, marker: &str) -> Option<String> {
+    let start = page.find(marker)? + marker.len();
+    let channel_id: String = page[start..]
+        .chars()
+        .take_while(|character| {
+            character.is_ascii_alphanumeric() || *character == '_' || *character == '-'
+        })
+        .collect();
+    (!channel_id.is_empty()).then_some(channel_id)
 }
 
 fn fetch_entries(state: &AppState) -> Result<Vec<FeedEntry>, String> {
