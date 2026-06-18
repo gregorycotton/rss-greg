@@ -711,45 +711,69 @@
                 return visibleEntries.filter(entry => entry.searchText.includes(query));
             };
 
-            const createArticleElement = (entry, index) => {
-                const articleEl = document.createElement('article');
-                articleEl.id = `article-${entry.id || index}`;
-
+            const getEntryMetaLine = (entry) => {
                 const dateStr = entry.pubDate ? ` &middot; ${new Date(entry.pubDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}` : "";
-                const metaLine = `<strong>${entry.author}</strong>${dateStr}`;
-                let summaryHTML = "";
-                let readAllButtonHTML = "";
+                return `<strong>${entry.author}</strong>${dateStr}`;
+            };
+
+            const buildArticleModalContent = (entry) => {
+                const metaLine = getEntryMetaLine(entry);
+                const iframeHeader = `<h2>${entry.title}</h2><p class="meta">${metaLine}</p>`;
+                let iframeBody = iframeHeader + '<hr>' + (entry.description || '');
 
                 if (entry.source_type === 'youtube' && entry.video_id) {
                     const youtubeEmbedHTML = `
                         <div class="video-container">
                             <iframe src="https://www.youtube.com/embed/${entry.video_id}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
                         </div>`;
-
-                    summaryHTML = youtubeEmbedHTML;
-                    const iframeHeader = `<h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2><p class="meta">${metaLine}</p>`;
-                    const iframeBody = iframeHeader + youtubeEmbedHTML + '<hr>' + (entry.description || '');
-                    const iframeContent = `<!DOCTYPE html><html><head></head><body>${iframeBody}</body></html>`;
-                    readAllButtonHTML = `<button class="action-btn read-more-btn" data-srcdoc="${escapeAttribute(iframeContent)}" data-link="${escapeAttribute(entry.link)}" data-title="${escapeAttribute(entry.title)}">Read all</button>`;
-                } else {
-                    summaryHTML = `<div class="summary">${entry.summaryText || ''}</div>`;
-                    const iframeHeader = `<h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2><p class="meta">${metaLine}</p><hr>`;
-                    const iframeBody = iframeHeader + (entry.description || '');
-                    const iframeContent = `<!DOCTYPE html><html><head></head><body>${iframeBody}</body></html>`;
-                    readAllButtonHTML = `<button class="action-btn read-more-btn" data-srcdoc="${escapeAttribute(iframeContent)}" data-link="${escapeAttribute(entry.link)}" data-title="${escapeAttribute(entry.title)}">Read all</button>`;
+                    iframeBody = iframeHeader + youtubeEmbedHTML + '<hr>' + (entry.description || '');
                 }
 
-                const actionButton = isShowingArchive
+                return `<!DOCTYPE html><html><head></head><body>${iframeBody}</body></html>`;
+            };
+
+            const openArticleModal = (entry) => {
+                const copyBtn = document.getElementById('copyBtn');
+                const fontSizeInput = document.getElementById('font-size-input');
+                copyBtn.dataset.link = entry.link;
+                copyBtn.dataset.title = entry.title;
+
+                const savedSize = localStorage.getItem('preferredFontSize');
+                if (savedSize) fontSizeInput.value = savedSize;
+
+                modalIframe.srcdoc = buildArticleModalContent(entry);
+                modalOverlay.style.display = 'block';
+                articleModal.style.display = 'flex';
+            };
+
+            const createArticleElement = (entry, index) => {
+                const articleEl = document.createElement('article');
+                articleEl.id = `article-${entry.id || index}`;
+
+                const metaLine = getEntryMetaLine(entry);
+                let summaryHTML = "";
+
+                if (entry.source_type === 'youtube' && entry.video_id) {
+                    summaryHTML = `
+                        <div class="video-container">
+                            <iframe src="https://www.youtube.com/embed/${entry.video_id}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                        </div>`;
+                } else {
+                    summaryHTML = `<div class="summary">${entry.summaryText || ''}</div>`;
+                }
+
+                const archiveButton = isShowingArchive
                     ? `<button class="action-btn reinstate-btn" data-id="${entry.id}">Reinstate</button>`
-                    : `<button class="action-btn done-btn" data-id="${entry.id}">Done</button>`;
+                    : `<button class="action-btn archive-btn" data-id="${entry.id}">Archive</button>`;
+                const webViewButton = `<button class="action-btn web-view-btn" data-id="${entry.id}">Web view</button>`;
 
                 articleEl.innerHTML = `
-                    <h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2>
+                    <h2><a href="${escapeAttribute(entry.link)}" class="article-popup-link" data-id="${entry.id}">${entry.title}</a></h2>
                     <div class="meta">${metaLine}</div>
                     ${summaryHTML}
                     <div class="article-actions">
-                        ${readAllButtonHTML}
-                        ${actionButton}
+                        ${webViewButton}
+                        ${archiveButton}
                     </div>
                 `;
                 return articleEl;
@@ -851,15 +875,22 @@
 
             articlesContainer.addEventListener('click', async function (e) {
                 const target = e.target;
-                if (target.id === 'load-more-btn') {
+                const popupLink = target.closest('.article-popup-link');
+
+                if (popupLink) {
+                    e.preventDefault();
+                    const entry = allEntries.find(item => item.id === popupLink.dataset.id);
+                    if (entry) openArticleModal(entry);
+                }
+                else if (target.id === 'load-more-btn') {
                     loadMoreEntries();
                 }
-                else if (target.classList.contains('done-btn') || target.classList.contains('reinstate-btn')) {
+                else if (target.classList.contains('archive-btn') || target.classList.contains('reinstate-btn')) {
                     const articleId = target.dataset.id;
                     const entry = allEntries.find(item => item.id === articleId);
                     target.disabled = true;
                     try {
-                        if (target.classList.contains('done-btn')) {
+                        if (target.classList.contains('archive-btn')) {
                             if (!entry) throw new Error('Could not find article to archive.');
                             await archiveEntry(entry);
                         } else {
@@ -871,19 +902,17 @@
                         target.disabled = false;
                     }
                 }
-                else if (target.classList.contains('read-more-btn')) {
-                    const copyBtn = document.getElementById('copyBtn');
-                    const fontSizeInput = document.getElementById('font-size-input');
-
-                    copyBtn.dataset.link = target.dataset.link;
-                    copyBtn.dataset.title = target.dataset.title;
-
-                    const savedSize = localStorage.getItem('preferredFontSize');
-                    if (savedSize) fontSizeInput.value = savedSize;
-
-                    modalIframe.srcdoc = target.dataset.srcdoc;
-                    modalOverlay.style.display = 'block';
-                    articleModal.style.display = 'flex';
+                else if (target.classList.contains('web-view-btn')) {
+                    const entry = allEntries.find(item => item.id === target.dataset.id);
+                    if (!entry) return;
+                    target.disabled = true;
+                    try {
+                        await invoke('open_external_url', { url: entry.link });
+                    } catch (error) {
+                        console.error('Error opening web view:', error);
+                    } finally {
+                        target.disabled = false;
+                    }
                 }
             });
 

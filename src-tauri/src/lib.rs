@@ -2,6 +2,7 @@ use std::{
     fs,
     io::Cursor,
     path::{Path, PathBuf},
+    process::Command,
     time::Duration,
 };
 
@@ -100,6 +101,7 @@ pub fn run() {
             get_archived_ids,
             archive_article,
             reinstate_article,
+            open_external_url,
             get_storage_info
         ])
         .run(tauri::generate_context!())
@@ -161,6 +163,26 @@ async fn reinstate_article(
     tauri::async_runtime::spawn_blocking(move || delete_archived_article(&db_path, &article_id))
         .await
         .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let url = url.trim();
+    let parsed = Url::parse(url).map_err(|error| format!("Invalid web URL: {error}"))?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return Err("Web view only supports http and https URLs.".to_string());
+    }
+
+    let status = Command::new("/usr/bin/open")
+        .arg(url)
+        .status()
+        .map_err(|error| format!("Could not open the default browser: {error}"))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("The default browser command exited with {status}."))
+    }
 }
 
 #[tauri::command]
