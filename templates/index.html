@@ -159,6 +159,11 @@
             gap: 10px;
         }
 
+        .load-more-row {
+            text-align: center;
+            margin: 24px 0 8px;
+        }
+
         .action-btn:hover {
             background-color: var(--color-hover);
         }
@@ -451,9 +456,11 @@
             const invoke = window.__TAURI__.core.invoke;
             let allEntries = [];
             let archivedIds = new Set();
-            let searchableEntries = [];
             let isShowingArchive = false;
             let loadingAnimation;
+            const ARTICLE_BATCH_SIZE = 20;
+            let visibleArticleLimit = ARTICLE_BATCH_SIZE;
+            let currentViewEntries = [];
             const articlesContainer = document.getElementById('articles-container');
             const modalIframe = document.getElementById('modal-iframe');
             const archiveToggleButton = document.getElementById('archive-toggle-btn');
@@ -672,77 +679,130 @@
                 }
             };
 
-            const renderCurrentView = () => {
-                const entriesToRender = isShowingArchive
+            const textFromHtml = (html) => new DOMParser().parseFromString(html || '', 'text/html').body.textContent || '';
+
+            const escapeAttribute = (value) => String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;');
+
+            const prepareEntries = () => {
+                allEntries = allEntries.map(entry => {
+                    const plainTextDescription = entry.source_type === 'youtube'
+                        ? 'YouTube video'
+                        : textFromHtml(entry.description);
+                    const summaryText = entry.source_type === 'youtube'
+                        ? 'YouTube video'
+                        : (plainTextDescription.length > 250 ? plainTextDescription.substring(0, 250) + '...' : plainTextDescription);
+
+                    return {
+                        ...entry,
+                        summaryText,
+                        searchText: `${entry.title || ''} ${entry.author || ''} ${plainTextDescription}`.toLowerCase()
+                    };
+                });
+            };
+
+            const getCurrentViewEntries = () => {
+                const visibleEntries = isShowingArchive
                     ? allEntries.filter(entry => archivedIds.has(entry.id))
                     : allEntries.filter(entry => !archivedIds.has(entry.id));
+                const query = searchBar.value.trim().toLowerCase();
+                if (!query) return visibleEntries;
+                return visibleEntries.filter(entry => entry.searchText.includes(query));
+            };
+
+            const createArticleElement = (entry, index) => {
+                const articleEl = document.createElement('article');
+                articleEl.id = `article-${entry.id || index}`;
+
+                const dateStr = entry.pubDate ? ` &middot; ${new Date(entry.pubDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}` : "";
+                const metaLine = `<strong>${entry.author}</strong>${dateStr}`;
+                let summaryHTML = "";
+                let readAllButtonHTML = "";
+
+                if (entry.source_type === 'youtube' && entry.video_id) {
+                    const youtubeEmbedHTML = `
+                        <div class="video-container">
+                            <iframe src="https://www.youtube.com/embed/${entry.video_id}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                        </div>`;
+
+                    summaryHTML = youtubeEmbedHTML;
+                    const iframeHeader = `<h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2><p class="meta">${metaLine}</p>`;
+                    const iframeBody = iframeHeader + youtubeEmbedHTML + '<hr>' + (entry.description || '');
+                    const iframeContent = `<!DOCTYPE html><html><head></head><body>${iframeBody}</body></html>`;
+                    readAllButtonHTML = `<button class="action-btn read-more-btn" data-srcdoc="${escapeAttribute(iframeContent)}" data-link="${escapeAttribute(entry.link)}" data-title="${escapeAttribute(entry.title)}">Read all</button>`;
+                } else {
+                    summaryHTML = `<div class="summary">${entry.summaryText || ''}</div>`;
+                    const iframeHeader = `<h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2><p class="meta">${metaLine}</p><hr>`;
+                    const iframeBody = iframeHeader + (entry.description || '');
+                    const iframeContent = `<!DOCTYPE html><html><head></head><body>${iframeBody}</body></html>`;
+                    readAllButtonHTML = `<button class="action-btn read-more-btn" data-srcdoc="${escapeAttribute(iframeContent)}" data-link="${escapeAttribute(entry.link)}" data-title="${escapeAttribute(entry.title)}">Read all</button>`;
+                }
+
+                const actionButton = isShowingArchive
+                    ? `<button class="action-btn reinstate-btn" data-id="${entry.id}">Reinstate</button>`
+                    : `<button class="action-btn done-btn" data-id="${entry.id}">Done</button>`;
+
+                articleEl.innerHTML = `
+                    <h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2>
+                    <div class="meta">${metaLine}</div>
+                    ${summaryHTML}
+                    <div class="article-actions">
+                        ${readAllButtonHTML}
+                        ${actionButton}
+                    </div>
+                `;
+                return articleEl;
+            };
+
+            const appendEntries = (startIndex, endIndex) => {
+                const fragment = document.createDocumentFragment();
+                currentViewEntries.slice(startIndex, endIndex).forEach((entry, offset) => {
+                    fragment.appendChild(createArticleElement(entry, startIndex + offset));
+                });
+                articlesContainer.appendChild(fragment);
+            };
+
+            const renderLoadMoreButton = () => {
+                const existingButtonRow = document.getElementById('load-more-row');
+                if (existingButtonRow) existingButtonRow.remove();
+                if (visibleArticleLimit >= currentViewEntries.length) return;
+
+                const buttonRow = document.createElement('div');
+                buttonRow.id = 'load-more-row';
+                buttonRow.className = 'load-more-row';
+                buttonRow.innerHTML = `<button id="load-more-btn" class="action-btn">Load more (${visibleArticleLimit}/${currentViewEntries.length})</button>`;
+                articlesContainer.appendChild(buttonRow);
+            };
+
+            const loadMoreEntries = () => {
+                const previousLimit = visibleArticleLimit;
+                visibleArticleLimit = Math.min(visibleArticleLimit + ARTICLE_BATCH_SIZE, currentViewEntries.length);
+                const existingButtonRow = document.getElementById('load-more-row');
+                if (existingButtonRow) existingButtonRow.remove();
+                appendEntries(previousLimit, visibleArticleLimit);
+                renderLoadMoreButton();
+            };
+
+            const renderCurrentView = ({ resetLimit = true } = {}) => {
+                if (resetLimit) visibleArticleLimit = ARTICLE_BATCH_SIZE;
 
                 archiveToggleButton.textContent = isShowingArchive ? "Return to feed" : "Visit archive";
                 searchBar.placeholder = isShowingArchive ? "Search archive" : "Search feed";
+                currentViewEntries = getCurrentViewEntries();
                 articlesContainer.innerHTML = '';
 
-                if (entriesToRender.length === 0) {
-                    articlesContainer.innerHTML = `<p class="loading-message">${isShowingArchive ? 'Your archive is empty.' : 'All caught up!'}</p>`;
-                    searchableEntries = [];
+                if (currentViewEntries.length === 0) {
+                    const emptyMessage = searchBar.value.trim()
+                        ? 'No matching articles.'
+                        : (isShowingArchive ? 'Your archive is empty.' : 'All caught up!');
+                    articlesContainer.innerHTML = `<p class="loading-message">${emptyMessage}</p>`;
                     return;
                 }
 
-                searchableEntries = [];
-                entriesToRender.forEach((entry, i) => {
-                    const articleEl = document.createElement('article');
-                    articleEl.id = `article-${i}`;
-
-                    let dateStr = entry.pubDate ? ` &middot; ${new Date(entry.pubDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}` : "";
-                    const metaLine = `<strong>${entry.author}</strong>${dateStr}`;
-                    
-                    let summaryHTML = "";
-                    let readAllButtonHTML = "";
-
-                    if (entry.source_type === 'youtube' && entry.video_id) {
-                        summaryHTML = `
-                            <div class="video-container">
-                                <iframe src="https://www.youtube.com/embed/${entry.video_id}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-                            </div>`;
-                        
-                        const modalVideoEmbed = `<div class="video-container">${summaryHTML}</div><hr>`;
-                        const iframeHeader = `<h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2><p class="meta">${metaLine}</p>`;
-                        const iframeBody = iframeHeader + modalVideoEmbed + entry.description;
-                        const iframeContent = `<!DOCTYPE html><html><head></head><body>${iframeBody}</body></html>`;
-                        const escapedIframeContent = iframeContent.replace(/"/g, '&quot;');
-                        const escapedLink = entry.link.replace(/"/g, '&quot;');
-                        const escapedTitle = entry.title.replace(/"/g, '&quot;');
-                        readAllButtonHTML = `<button class="action-btn read-more-btn" data-srcdoc="${escapedIframeContent}" data-link="${escapedLink}" data-title="${escapedTitle}">Read all</button>`;
-                        searchableEntries.push({ "id": articleEl.id, "title": entry.title, "author": entry.author, "summary": "YouTube video" });
-                    } else {
-                        const plainTextDesc = new DOMParser().parseFromString(entry.description, 'text/html').body.textContent || '';
-                        const summary = (plainTextDesc.length > 250) ? plainTextDesc.substring(0, 250) + '...' : plainTextDesc;
-                        summaryHTML = `<div class="summary">${summary}</div>`;
-                        searchableEntries.push({ "id": articleEl.id, "title": entry.title, "author": entry.author, "summary": summary });
-
-                        const iframeHeader = `<h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2><p class="meta">${metaLine}</p><hr>`;
-                        const iframeBody = iframeHeader + entry.description;
-                        const iframeContent = `<!DOCTYPE html><html><head></head><body>${iframeBody}</body></html>`;
-                        const escapedIframeContent = iframeContent.replace(/"/g, '&quot;');
-                        const escapedLink = entry.link.replace(/"/g, '&quot;');
-                        const escapedTitle = entry.title.replace(/"/g, '&quot;');
-                        readAllButtonHTML = `<button class="action-btn read-more-btn" data-srcdoc="${escapedIframeContent}" data-link="${escapedLink}" data-title="${escapedTitle}">Read all</button>`;
-                    }
-
-                    const actionButton = isShowingArchive
-                        ? `<button class="action-btn reinstate-btn" data-id="${entry.id}">Reinstate</button>`
-                        : `<button class="action-btn done-btn" data-id="${entry.id}">Done</button>`;
-
-                    articleEl.innerHTML = `
-                        <h2><a href="${entry.link}" target="_blank" rel="noopener noreferrer">${entry.title}</a></h2>
-                        <div class="meta">${metaLine}</div>
-                        ${summaryHTML}
-                        <div class="article-actions">
-                            ${readAllButtonHTML}
-                            ${actionButton}
-                        </div>
-                    `;
-                    articlesContainer.appendChild(articleEl);
-                });
+                visibleArticleLimit = Math.min(visibleArticleLimit, currentViewEntries.length);
+                appendEntries(0, visibleArticleLimit);
+                renderLoadMoreButton();
             };
 
             const loadFeed = async () => {
@@ -751,6 +811,7 @@
                 startLoadingAnimation();
                 try {
                     allEntries = await invoke('get_feed');
+                    prepareEntries();
                     await loadArchiveStatus();
                     await migrateLegacyArchive();
                     stopLoadingAnimation();
@@ -790,7 +851,10 @@
 
             articlesContainer.addEventListener('click', async function (e) {
                 const target = e.target;
-                if (target.classList.contains('done-btn') || target.classList.contains('reinstate-btn')) {
+                if (target.id === 'load-more-btn') {
+                    loadMoreEntries();
+                }
+                else if (target.classList.contains('done-btn') || target.classList.contains('reinstate-btn')) {
                     const articleId = target.dataset.id;
                     const entry = allEntries.find(item => item.id === articleId);
                     target.disabled = true;
@@ -801,7 +865,7 @@
                         } else {
                             await reinstateEntry(articleId);
                         }
-                        renderCurrentView();
+                        renderCurrentView({ resetLimit: false });
                     } catch (error) {
                         console.error('Error updating archive:', error);
                         target.disabled = false;
@@ -867,20 +931,7 @@
             });
 
             searchBar.addEventListener('input', (e) => {
-                const query = e.target.value.trim().toLowerCase();
-                const allArticleElements = articlesContainer.querySelectorAll('article');
-                if (query === '') {
-                    allArticleElements.forEach(article => article.style.display = 'block');
-                    return;
-                }
-                const visibleArticleIds = new Set(
-                    searchableEntries
-                        .filter(entry => `${entry.title} ${entry.author} ${entry.summary}`.toLowerCase().includes(query))
-                        .map(entry => entry.id)
-                );
-                allArticleElements.forEach(article => {
-                    article.style.display = visibleArticleIds.has(article.id) ? 'block' : 'none';
-                });
+                renderCurrentView();
             });
 
             applyTheme(localStorage.getItem('preferredTheme') || 'light');
