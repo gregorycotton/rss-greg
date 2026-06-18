@@ -105,5 +105,13 @@ def api_feed():
     entries = fetch_entries()
     return jsonify(entries)
 
+@app.route('/api/health')
+def api_health():
+    return jsonify({"ok": True, "sites": len(SITES)})
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    host = os.getenv("RSS_FEED_HOST", "127.0.0.1")
+    port = int(os.getenv("RSS_FEED_PORT", "5000"))
+    debug = os.getenv("RSS_FEED_DEBUG") == "1"
+
+    app.run(host=host, port=port, debug=debug, use_reloader=False)

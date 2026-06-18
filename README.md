@@ -15,4 +15,22 @@ python app.py
 Feed sources live in a local `.env` file so they do not get pushed to GitHub.
 Use `.env.example` for the expected `RSS_SITE_...` format.
 
+## Desktop app
+
+```sh
+nix-shell
+npm install
+npm run dev
+```
+
+Build a Dock-pinnable macOS app with:
+
+```sh
+npm run build
+```
+
+The built app lands at `src-tauri/target/release/bundle/macos/Greg's Feed.app`.
+It starts the local Flask backend through Nix and uses this project folder as the backend root.
+Backend logs are written to your system temp directory as `gregs-feed-backend.log`.
+
 <img src="https://raw.githubusercontent.com/gregorycotton/gregorycotton/refs/heads/main/ontology/images/rss-feed/rss-feed-home.jpg">

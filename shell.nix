@@ -14,6 +14,9 @@ in
   mkShell {
     buildInputs = [
       python-with-packages
+      cargo
+      nodejs
+      rustc
     ];
     shellHook = ''
       echo "--- Greg's feed shell ---"
