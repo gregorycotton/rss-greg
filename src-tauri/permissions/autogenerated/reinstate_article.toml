@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reinstate-article"
+description = "Enables the reinstate_article command without any pre-configured scope."
+commands.allow = ["reinstate_article"]
+
+[[permission]]
+identifier = "deny-reinstate-article"
+description = "Denies the reinstate_article command without any pre-configured scope."
+commands.deny = ["reinstate_article"]

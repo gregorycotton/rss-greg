@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-archive-article"
+description = "Enables the archive_article command without any pre-configured scope."
+commands.allow = ["archive_article"]
+
+[[permission]]
+identifier = "deny-archive-article"
+description = "Denies the archive_article command without any pre-configured scope."
+commands.deny = ["archive_article"]

@@ -13,5 +13,17 @@ fn main() {
     fs::write(out_dir.join("default-feeds.json"), bundled_feeds)
         .expect("failed to write generated default-feeds.json");
 
-    tauri_build::build()
+    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
+        tauri_build::AppManifest::new().commands(&[
+            "get_feed",
+            "get_feed_sources",
+            "save_feed_sources",
+            "get_archived_ids",
+            "archive_article",
+            "reinstate_article",
+            "open_external_url",
+            "get_storage_info",
+        ]),
+    ))
+    .expect("failed to build Tauri application")
 }

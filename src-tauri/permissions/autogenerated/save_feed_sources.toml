@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-feed-sources"
+description = "Enables the save_feed_sources command without any pre-configured scope."
+commands.allow = ["save_feed_sources"]
+
+[[permission]]
+identifier = "deny-save-feed-sources"
+description = "Denies the save_feed_sources command without any pre-configured scope."
+commands.deny = ["save_feed_sources"]

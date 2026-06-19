@@ -1,0 +1,13 @@
+[[permission]]
+identifier = "allow-feed-commands"
+description = "Allows the bundled Feed interface to access its RSS, archive, settings, and browser commands."
+commands.allow = [
+    "get_feed",
+    "get_feed_sources",
+    "save_feed_sources",
+    "get_archived_ids",
+    "archive_article",
+    "reinstate_article",
+    "open_external_url",
+    "get_storage_info",
+]

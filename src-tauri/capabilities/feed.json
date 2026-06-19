@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "feed-interface",
+  "description": "Grants Feed's bundled interface access to its Rust commands.",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["https://com.gregorycotton.gregs-feed/*"]
+  },
+  "permissions": ["allow-feed-commands"]
+}

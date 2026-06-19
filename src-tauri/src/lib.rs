@@ -11,7 +11,7 @@ use reqwest::blocking::Client;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tauri::{Manager, State};
+use tauri::{Manager, State, WebviewWindow};
 use url::Url;
 
 const DEFAULT_FEEDS: &str = include_str!(concat!(env!("OUT_DIR"), "/default-feeds.json"));
@@ -91,6 +91,11 @@ pub fn run() {
                 feeds_path,
                 client,
             });
+
+            let main_window = app
+                .get_webview_window("main")
+                .ok_or("Could not find the main application window")?;
+            load_bundled_ui(&main_window)?;
 
             Ok(())
         })
@@ -183,6 +188,27 @@ fn open_external_url(url: String) -> Result<(), String> {
     } else {
         Err(format!("The default browser command exited with {status}."))
     }
+}
+
+#[cfg(target_os = "macos")]
+fn load_bundled_ui(window: &WebviewWindow) -> tauri::Result<()> {
+    let html = include_str!("../../templates/index.html").to_string();
+    window.with_webview(move |webview| unsafe {
+        use objc2_foundation::{NSString, NSURL};
+        use objc2_web_kit::WKWebView;
+
+        let view: &WKWebView = &*webview.inner().cast();
+        let html = NSString::from_str(&html);
+        let base_url =
+            NSURL::URLWithString(&NSString::from_str("https://com.gregorycotton.gregs-feed/"))
+                .expect("valid application identity URL");
+        view.loadHTMLString_baseURL(&html, Some(&base_url));
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn load_bundled_ui(_window: &WebviewWindow) -> tauri::Result<()> {
+    Ok(())
 }
 
 #[tauri::command]

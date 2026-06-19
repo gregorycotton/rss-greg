@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-feed-sources"
+description = "Enables the get_feed_sources command without any pre-configured scope."
+commands.allow = ["get_feed_sources"]
+
+[[permission]]
+identifier = "deny-get-feed-sources"
+description = "Denies the get_feed_sources command without any pre-configured scope."
+commands.deny = ["get_feed_sources"]
