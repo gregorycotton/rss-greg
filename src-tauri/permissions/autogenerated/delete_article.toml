@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-delete-article"
+description = "Enables the delete_article command without any pre-configured scope."
+commands.allow = ["delete_article"]
+
+[[permission]]
+identifier = "deny-delete-article"
+description = "Denies the delete_article command without any pre-configured scope."
+commands.deny = ["delete_article"]

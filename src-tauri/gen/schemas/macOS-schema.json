@@ -183,22 +183,22 @@
           "markdownDescription": "Enables the archive_article command without any pre-configured scope."
         },
         {
+          "description": "Enables the delete_article command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-delete-article",
+          "markdownDescription": "Enables the delete_article command without any pre-configured scope."
+        },
+        {
           "description": "Allows the bundled Feed interface to access its RSS, archive, settings, and browser commands.",
           "type": "string",
           "const": "allow-feed-commands",
           "markdownDescription": "Allows the bundled Feed interface to access its RSS, archive, settings, and browser commands."
         },
         {
-          "description": "Enables the get_archived_ids command without any pre-configured scope.",
+          "description": "Enables the get_articles_page command without any pre-configured scope.",
           "type": "string",
-          "const": "allow-get-archived-ids",
-          "markdownDescription": "Enables the get_archived_ids command without any pre-configured scope."
-        },
-        {
-          "description": "Enables the get_feed command without any pre-configured scope.",
-          "type": "string",
-          "const": "allow-get-feed",
-          "markdownDescription": "Enables the get_feed command without any pre-configured scope."
+          "const": "allow-get-articles-page",
+          "markdownDescription": "Enables the get_articles_page command without any pre-configured scope."
         },
         {
           "description": "Enables the get_feed_sources command without any pre-configured scope.",
@@ -219,6 +219,12 @@
           "markdownDescription": "Enables the open_external_url command without any pre-configured scope."
         },
         {
+          "description": "Enables the refresh_feeds command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-refresh-feeds",
+          "markdownDescription": "Enables the refresh_feeds command without any pre-configured scope."
+        },
+        {
           "description": "Enables the reinstate_article command without any pre-configured scope.",
           "type": "string",
           "const": "allow-reinstate-article",
@@ -237,16 +243,16 @@
           "markdownDescription": "Denies the archive_article command without any pre-configured scope."
         },
         {
-          "description": "Denies the get_archived_ids command without any pre-configured scope.",
+          "description": "Denies the delete_article command without any pre-configured scope.",
           "type": "string",
-          "const": "deny-get-archived-ids",
-          "markdownDescription": "Denies the get_archived_ids command without any pre-configured scope."
+          "const": "deny-delete-article",
+          "markdownDescription": "Denies the delete_article command without any pre-configured scope."
         },
         {
-          "description": "Denies the get_feed command without any pre-configured scope.",
+          "description": "Denies the get_articles_page command without any pre-configured scope.",
           "type": "string",
-          "const": "deny-get-feed",
-          "markdownDescription": "Denies the get_feed command without any pre-configured scope."
+          "const": "deny-get-articles-page",
+          "markdownDescription": "Denies the get_articles_page command without any pre-configured scope."
         },
         {
           "description": "Denies the get_feed_sources command without any pre-configured scope.",
@@ -265,6 +271,12 @@
           "type": "string",
           "const": "deny-open-external-url",
           "markdownDescription": "Denies the open_external_url command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the refresh_feeds command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-refresh-feeds",
+          "markdownDescription": "Denies the refresh_feeds command without any pre-configured scope."
         },
         {
           "description": "Denies the reinstate_article command without any pre-configured scope.",

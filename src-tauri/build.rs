@@ -15,12 +15,13 @@ fn main() {
 
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
-            "get_feed",
+            "get_articles_page",
+            "refresh_feeds",
             "get_feed_sources",
             "save_feed_sources",
-            "get_archived_ids",
             "archive_article",
             "reinstate_article",
+            "delete_article",
             "open_external_url",
             "get_storage_info",
         ]),

@@ -451,12 +451,14 @@
         document.addEventListener('DOMContentLoaded', function () {
             const invoke = window.__TAURI__.core.invoke;
             let allEntries = [];
-            let archivedIds = new Set();
             let isShowingArchive = false;
-            let loadingAnimation;
             const ARTICLE_BATCH_SIZE = 20;
-            let visibleArticleLimit = ARTICLE_BATCH_SIZE;
-            let currentViewEntries = [];
+            const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+            let nextCursor = null;
+            let isLoadingMore = false;
+            let syncPromise = null;
+            let pageRequestId = 0;
+            let searchTimer = null;
             const articlesContainer = document.getElementById('articles-container');
             const modalIframe = document.getElementById('modal-iframe');
             const archiveToggleButton = document.getElementById('archive-toggle-btn');
@@ -489,45 +491,28 @@
                 source_type: entry.source_type
             });
 
-            const loadArchiveStatus = async () => {
-                archivedIds = new Set(await invoke('get_archived_ids'));
-            };
-
             const archiveEntry = async (entry) => {
-                const articleId = await invoke('archive_article', { entry: archivePayload(entry) });
-                archivedIds.add(articleId || entry.id);
+                await invoke('archive_article', { entry: archivePayload(entry) });
             };
 
             const reinstateEntry = async (articleId) => {
                 await invoke('reinstate_article', { articleId });
-                archivedIds.delete(articleId);
+            };
+
+            const deleteEntry = async (articleId) => {
+                await invoke('delete_article', { articleId });
             };
 
             const migrateLegacyArchive = async () => {
                 const legacyLinks = new Set(getLegacyArchivedLinks());
-                if (legacyLinks.size === 0) return;
+                if (legacyLinks.size === 0) return false;
 
                 for (const link of legacyLinks) {
                     const entry = allEntries.find(entry => entry.link === link) || { link };
                     await archiveEntry(entry);
                 }
                 localStorage.removeItem('greg_archived_posts');
-            };
-
-            const startLoadingAnimation = () => {
-                const loadingMessage = articlesContainer.querySelector('.loading-message');
-                if (!loadingMessage) return;
-                const loadingSpan = loadingMessage.querySelector('span');
-                if (!loadingSpan) return;
-                let dotCount = 1;
-                loadingAnimation = setInterval(() => {
-                    dotCount = (dotCount % 3) + 1;
-                    loadingSpan.textContent = '.'.repeat(dotCount);
-                }, 400);
-            };
-
-            const stopLoadingAnimation = () => {
-                if (loadingAnimation) clearInterval(loadingAnimation);
+                return true;
             };
 
             const updateIframeTheme = () => {
@@ -668,7 +653,8 @@
                     feedSources = savedSources;
                     renderFeedSettings();
                     setFeedSettingsMessage('Saved.');
-                    await loadFeed();
+                    if (syncPromise) await syncPromise.catch(() => {});
+                    await refreshFeeds();
                 } catch (error) {
                     console.error('Error saving feed settings:', error);
                     setFeedSettingsMessage(String(error), true);
@@ -681,8 +667,8 @@
                 .replace(/&/g, '&amp;')
                 .replace(/"/g, '&quot;');
 
-            const prepareEntries = () => {
-                allEntries = allEntries.map(entry => {
+            const prepareEntries = (entries) => {
+                return entries.map(entry => {
                     const plainTextDescription = entry.source_type === 'youtube'
                         ? 'YouTube video'
                         : textFromHtml(entry.description);
@@ -696,15 +682,6 @@
                         searchText: `${entry.title || ''} ${entry.author || ''} ${plainTextDescription}`.toLowerCase()
                     };
                 });
-            };
-
-            const getCurrentViewEntries = () => {
-                const visibleEntries = isShowingArchive
-                    ? allEntries.filter(entry => archivedIds.has(entry.id))
-                    : allEntries.filter(entry => !archivedIds.has(entry.id));
-                const query = searchBar.value.trim().toLowerCase();
-                if (!query) return visibleEntries;
-                return visibleEntries.filter(entry => entry.searchText.includes(query));
             };
 
             const getEntryMetaLine = (entry) => {
@@ -758,8 +735,9 @@
                     summaryHTML = `<div class="summary">${entry.summaryText || ''}</div>`;
                 }
 
-                const archiveButton = isShowingArchive
-                    ? `<button class="action-btn reinstate-btn" data-id="${entry.id}">Reinstate</button>`
+                const archiveButtons = isShowingArchive
+                    ? `<button class="action-btn reinstate-btn" data-id="${entry.id}">Reinstate</button>
+                       <button class="action-btn permanent-delete-btn" data-id="${entry.id}">Delete</button>`
                     : `<button class="action-btn archive-btn" data-id="${entry.id}">Archive</button>`;
                 const webViewButton = `<button class="action-btn web-view-btn" data-id="${entry.id}">Web view</button>`;
 
@@ -769,15 +747,15 @@
                     ${summaryHTML}
                     <div class="article-actions">
                         ${webViewButton}
-                        ${archiveButton}
+                        ${archiveButtons}
                     </div>
                 `;
                 return articleEl;
             };
 
-            const appendEntries = (startIndex, endIndex) => {
+            const appendEntries = (entries, startIndex = 0) => {
                 const fragment = document.createDocumentFragment();
-                currentViewEntries.slice(startIndex, endIndex).forEach((entry, offset) => {
+                entries.forEach((entry, offset) => {
                     fragment.appendChild(createArticleElement(entry, startIndex + offset));
                 });
                 articlesContainer.appendChild(fragment);
@@ -786,33 +764,44 @@
             const renderLoadMoreButton = () => {
                 const existingButtonRow = document.getElementById('load-more-row');
                 if (existingButtonRow) existingButtonRow.remove();
-                if (visibleArticleLimit >= currentViewEntries.length) return;
+                if (!nextCursor) return;
 
                 const buttonRow = document.createElement('div');
                 buttonRow.id = 'load-more-row';
                 buttonRow.className = 'load-more-row';
-                buttonRow.innerHTML = `<button id="load-more-btn" class="action-btn">Load more (${visibleArticleLimit}/${currentViewEntries.length})</button>`;
+                buttonRow.innerHTML = `<button id="load-more-btn" class="action-btn">Load more</button>`;
                 articlesContainer.appendChild(buttonRow);
             };
 
-            const loadMoreEntries = () => {
-                const previousLimit = visibleArticleLimit;
-                visibleArticleLimit = Math.min(visibleArticleLimit + ARTICLE_BATCH_SIZE, currentViewEntries.length);
-                const existingButtonRow = document.getElementById('load-more-row');
-                if (existingButtonRow) existingButtonRow.remove();
-                appendEntries(previousLimit, visibleArticleLimit);
-                renderLoadMoreButton();
+            const loadArticlesPage = async ({ reset = false, limit = ARTICLE_BATCH_SIZE } = {}) => {
+                if (!reset && (isLoadingMore || !nextCursor)) return;
+                const requestId = reset ? ++pageRequestId : pageRequestId;
+                if (!reset) isLoadingMore = true;
+
+                try {
+                    const page = await invoke('get_articles_page', {
+                        archived: isShowingArchive,
+                        cursor: reset ? null : nextCursor,
+                        query: searchBar.value.trim() || null,
+                        limit,
+                    });
+                    if (requestId !== pageRequestId) return;
+
+                    const entries = prepareEntries(page.entries || []);
+                    allEntries = reset ? entries : allEntries.concat(entries);
+                    nextCursor = page.next_cursor || null;
+                    renderCurrentView();
+                } finally {
+                    if (!reset) isLoadingMore = false;
+                }
             };
 
-            const renderCurrentView = ({ resetLimit = true } = {}) => {
-                if (resetLimit) visibleArticleLimit = ARTICLE_BATCH_SIZE;
-
+            const renderCurrentView = () => {
                 archiveToggleButton.textContent = isShowingArchive ? "Return to feed" : "Visit archive";
                 searchBar.placeholder = isShowingArchive ? "Search archive" : "Search feed";
-                currentViewEntries = getCurrentViewEntries();
                 articlesContainer.innerHTML = '';
 
-                if (currentViewEntries.length === 0) {
+                if (allEntries.length === 0) {
                     const emptyMessage = searchBar.value.trim()
                         ? 'No matching articles.'
                         : (isShowingArchive ? 'Your archive is empty.' : 'All caught up!');
@@ -820,30 +809,56 @@
                     return;
                 }
 
-                visibleArticleLimit = Math.min(visibleArticleLimit, currentViewEntries.length);
-                appendEntries(0, visibleArticleLimit);
+                appendEntries(allEntries);
                 renderLoadMoreButton();
             };
 
+            const refreshFeeds = async () => {
+                if (syncPromise) return syncPromise;
+                const reloadButton = document.getElementById('reload-btn');
+                reloadButton.disabled = true;
+                reloadButton.textContent = 'Refreshing';
+                syncPromise = invoke('refresh_feeds')
+                    .then(async result => {
+                        const visibleCount = Math.max(ARTICLE_BATCH_SIZE, allEntries.length);
+                        await loadArticlesPage({ reset: true, limit: visibleCount });
+                        if (result.failed_feeds?.length) {
+                            console.warn('Feeds that failed to refresh:', result.failed_feeds);
+                        }
+                        return result;
+                    })
+                    .catch(error => {
+                        console.error('Error refreshing feeds:', error);
+                        throw error;
+                    })
+                    .finally(() => {
+                        syncPromise = null;
+                        reloadButton.disabled = false;
+                        reloadButton.textContent = 'Reload Feed';
+                    });
+                return syncPromise;
+            };
+
             const loadFeed = async () => {
-                stopLoadingAnimation();
-                articlesContainer.innerHTML = '<p class="loading-message">Building feed<span>.</span></p>';
-                startLoadingAnimation();
                 try {
-                    allEntries = await invoke('get_feed');
-                    prepareEntries();
-                    await loadArchiveStatus();
-                    await migrateLegacyArchive();
-                    stopLoadingAnimation();
-                    renderCurrentView();
+                    await loadArticlesPage({ reset: true });
+                    const migratedArchive = await migrateLegacyArchive();
+                    if (migratedArchive) await loadArticlesPage({ reset: true });
+                    if (allEntries.length === 0 && !isShowingArchive) {
+                        articlesContainer.innerHTML = '<p class="loading-message">Building feed.</p>';
+                        await refreshFeeds();
+                    } else {
+                        refreshFeeds().catch(() => {});
+                    }
                 } catch (error) {
-                    stopLoadingAnimation();
                     articlesContainer.innerHTML = '<p class="loading-message">Failed to load feed.</p>';
-                    console.error('Error fetching feed:', error);
+                    console.error('Error loading feed:', error);
                 }
             };
             
-            document.getElementById('reload-btn').addEventListener('click', loadFeed);
+            document.getElementById('reload-btn').addEventListener('click', () => {
+                refreshFeeds().catch(() => {});
+            });
             document.getElementById('settings-btn').addEventListener('click', openSettings);
             document.getElementById('add-feed-btn').addEventListener('click', () => {
                 feedSources = collectFeedSettings({ allowIncomplete: true });
@@ -863,10 +878,10 @@
                 renderFeedSettings();
                 setFeedSettingsMessage('');
             });
-            archiveToggleButton.addEventListener('click', () => {
+            archiveToggleButton.addEventListener('click', async () => {
                 isShowingArchive = !isShowingArchive;
                 searchBar.value = '';
-                renderCurrentView();
+                await loadArticlesPage({ reset: true });
             });
 
             articlesContainer.addEventListener('click', async function (e) {
@@ -879,7 +894,13 @@
                     if (entry) openArticleModal(entry);
                 }
                 else if (target.id === 'load-more-btn') {
-                    loadMoreEntries();
+                    target.disabled = true;
+                    try {
+                        await loadArticlesPage();
+                    } catch (error) {
+                        console.error('Error loading more articles:', error);
+                        target.disabled = false;
+                    }
                 }
                 else if (target.classList.contains('archive-btn') || target.classList.contains('reinstate-btn')) {
                     const articleId = target.dataset.id;
@@ -892,9 +913,22 @@
                         } else {
                             await reinstateEntry(articleId);
                         }
-                        renderCurrentView({ resetLimit: false });
+                        allEntries = allEntries.filter(item => item.id !== articleId);
+                        renderCurrentView();
                     } catch (error) {
                         console.error('Error updating archive:', error);
+                        target.disabled = false;
+                    }
+                }
+                else if (target.classList.contains('permanent-delete-btn')) {
+                    const articleId = target.dataset.id;
+                    target.disabled = true;
+                    try {
+                        await deleteEntry(articleId);
+                        allEntries = allEntries.filter(item => item.id !== articleId);
+                        renderCurrentView();
+                    } catch (error) {
+                        console.error('Error deleting article:', error);
                         target.disabled = false;
                     }
                 }
@@ -955,12 +989,20 @@
                 button.addEventListener('click', () => applyTheme(button.dataset.theme));
             });
 
-            searchBar.addEventListener('input', (e) => {
-                renderCurrentView();
+            searchBar.addEventListener('input', () => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => {
+                    loadArticlesPage({ reset: true }).catch(error => {
+                        console.error('Error searching articles:', error);
+                    });
+                }, 250);
             });
 
             applyTheme(localStorage.getItem('preferredTheme') || 'light');
             loadFeed();
+            setInterval(() => {
+                refreshFeeds().catch(() => {});
+            }, REFRESH_INTERVAL_MS);
         });
     </script>
 </body>
