@@ -2,6 +2,8 @@
 
 Mouser is a personal RSS and YouTube reader packaged as a lightweight Tauri desktop app for macOS. It uses the operating system's native WebView and a Rust backend; it does not run a local HTTP server or require the project directory at runtime.
 
+![Mouser](https://github.com/gregorycotton/mouser/blob/main/mouser.png?raw=true)
+
 ## Features
 
 - RSS, Atom, Substack, and YouTube channel feeds
