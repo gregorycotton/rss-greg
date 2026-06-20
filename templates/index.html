@@ -2,7 +2,7 @@
 <html lang="en">
 
 <head>
-    <title>Feed</title>
+    <title>Mouser</title>
     <meta charset='UTF-8'>
     <style>
         :root {
@@ -390,12 +390,12 @@
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
         </pre>
-        <i>Feed</i>
+        <i>Mouser</i>
         <br>
         <i>––</i>
         <div class="header-controls">
             <div class="header-main-buttons">
-                <button id="reload-btn" class="action-btn">Reload Feed</button>
+                <button id="reload-btn" class="action-btn">Reload</button>
                 <button id="archive-toggle-btn" class="action-btn">Visit archive</button>
                 <button id="settings-btn" class="action-btn">Settings</button>
             </div>
@@ -834,7 +834,7 @@
                     .finally(() => {
                         syncPromise = null;
                         reloadButton.disabled = false;
-                        reloadButton.textContent = 'Reload Feed';
+                        reloadButton.textContent = 'Reload';
                     });
                 return syncPromise;
             };

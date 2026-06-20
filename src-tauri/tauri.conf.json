@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Feed",
+  "productName": "Mouser",
   "version": "0.1.0",
   "identifier": "com.gregorycotton.gregs-feed",
   "build": {
@@ -11,7 +11,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Feed",
+        "title": "Mouser",
         "width": 900,
         "height": 1000,
         "minWidth": 640,

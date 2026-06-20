@@ -132,7 +132,7 @@ pub fn run() {
 
             let client = Client::builder()
                 .timeout(Duration::from_secs(20))
-                .user_agent("GregsFeed/0.1 Tauri")
+                .user_agent("Mouser/0.1 Tauri")
                 .build()?;
 
             app.manage(AppState {
@@ -1022,7 +1022,7 @@ mod tests {
 
     fn temporary_db(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
-            "gregs-feed-{name}-{}-{}.sqlite3",
+            "mouser-{name}-{}-{}.sqlite3",
             std::process::id(),
             current_unix_timestamp()
         ))

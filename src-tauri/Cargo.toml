@@ -1,12 +1,12 @@
 [package]
-name = "gregs-feed"
+name = "mouser"
 version = "0.1.0"
-description = "Native shell for Greg's RSS feed"
+description = "Native shell for Mouser"
 authors = ["Gregory Cotton"]
 edition = "2021"
 
 [lib]
-name = "gregs_feed_lib"
+name = "mouser_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

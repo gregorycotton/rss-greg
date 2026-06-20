@@ -9,7 +9,7 @@ mkShell {
   ];
 
   shellHook = ''
-    echo "--- Feed desktop shell ---"
+    echo "--- Mouser desktop shell ---"
     echo "Run 'npm install' once, then 'npm run dev' or 'npm run build'."
   '';
 }

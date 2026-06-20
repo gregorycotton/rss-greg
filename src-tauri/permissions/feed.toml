@@ -1,6 +1,6 @@
 [[permission]]
 identifier = "allow-feed-commands"
-description = "Allows the bundled Feed interface to access its RSS, archive, settings, and browser commands."
+description = "Allows the bundled Mouser interface to access its RSS, archive, settings, and browser commands."
 commands.allow = [
     "get_articles_page",
     "refresh_feeds",

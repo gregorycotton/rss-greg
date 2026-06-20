@@ -1,6 +1,6 @@
-# Feed
+# Mouser
 
-Feed is a personal RSS and YouTube reader packaged as a lightweight Tauri desktop app for macOS. It uses the operating system's native WebView and a Rust backend; it does not run a local HTTP server or require the project directory at runtime.
+Mouser is a personal RSS and YouTube reader packaged as a lightweight Tauri desktop app for macOS. It uses the operating system's native WebView and a Rust backend; it does not run a local HTTP server or require the project directory at runtime.
 
 ## Features
 
@@ -14,11 +14,11 @@ Feed is a personal RSS and YouTube reader packaged as a lightweight Tauri deskto
 
 ## Loading articles
 
-On launch, Feed immediately queries the newest 20 cached articles from SQLite. It then refreshes every configured feed concurrently in the background and updates the visible page when synchronization finishes. Each feed response contributes up to 10 recent entries to the cache (first launch needs to download the feeds before it can show articles). Later launches can display cached articles without waiting for the network.
+On launch, Mouser immediately queries the newest 20 cached articles from SQLite. It then refreshes every configured feed concurrently in the background and updates the visible page when synchronization finishes. Each feed response contributes up to 10 recent entries to the cache (first launch needs to download the feeds before it can show articles). Later launches can display cached articles without waiting for the network.
 
 `Load more` requests another 20 date-ordered articles directly from SQLite. Once SQLite is exhausted, loading stops; RSS does not provide a standard way to request older pages that are no longer present in a publisher's feed **[TODO]**.
 
-While the app remains open, it refreshes feeds every 15 minutes. The Reload Feed button triggers the same synchronization manually.
+While the app remains open, it refreshes feeds every 15 minutes. The Reload button triggers the same synchronization manually.
 
 ## Archive lifecycle
 
@@ -32,7 +32,7 @@ Deleted article content is removed from SQLite. A small tombstone containing onl
 
 Unarchived articles that have not appeared in a feed response for 90 days are pruned. Articles still present in a feed have their `last_seen_at` value refreshed and remain cached.
 
-## Feed configuration
+## Source configuration
 
 Manage feeds from **Settings** inside the app. Changes are written to:
 
@@ -99,16 +99,16 @@ npm run build
 For example with Mac, the bundle is created at:
 
 ```text
-src-tauri/target/release/bundle/macos/Feed.app
+src-tauri/target/release/bundle/macos/Mouser.app
 ```
 
-After quitting Feed, update the copy in Applications with:
+After quitting Mouser, update the copy in Applications with:
 
 ```sh
-ditto src-tauri/target/release/bundle/macos/Feed.app /Applications/Feed.app
+ditto src-tauri/target/release/bundle/macos/Mouser.app /Applications/Mouser.app
 ```
 
-Because the Dock item points to `/Applications/Feed.app`, replacing the bundle at that path keeps the existing Dock pin.
+Because the Dock item points to `/Applications/Mouser.app`, replacing the bundle at that path keeps the existing Dock pin.
 
 ## Architecture
 

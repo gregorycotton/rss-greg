@@ -1,1 +1,1 @@
-{"feed-interface":{"identifier":"feed-interface","description":"Grants Feed's bundled interface access to its Rust commands.","remote":{"urls":["https://com.gregorycotton.gregs-feed/*"]},"local":true,"windows":["main"],"permissions":["allow-feed-commands"]}}
+{"feed-interface":{"identifier":"feed-interface","description":"Grants Mouser's bundled interface access to its Rust commands.","remote":{"urls":["https://com.gregorycotton.gregs-feed/*"]},"local":true,"windows":["main"],"permissions":["allow-feed-commands"]}}

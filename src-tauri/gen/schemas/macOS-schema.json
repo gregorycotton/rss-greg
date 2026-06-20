@@ -189,10 +189,10 @@
           "markdownDescription": "Enables the delete_article command without any pre-configured scope."
         },
         {
-          "description": "Allows the bundled Feed interface to access its RSS, archive, settings, and browser commands.",
+          "description": "Allows the bundled Mouser interface to access its RSS, archive, settings, and browser commands.",
           "type": "string",
           "const": "allow-feed-commands",
-          "markdownDescription": "Allows the bundled Feed interface to access its RSS, archive, settings, and browser commands."
+          "markdownDescription": "Allows the bundled Mouser interface to access its RSS, archive, settings, and browser commands."
         },
         {
           "description": "Enables the get_articles_page command without any pre-configured scope.",
